@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Silence in NYC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+<style>
+  :root {
+    --ink: #111111;
+    --muted: #6b6b6b;
+    --line: rgba(0, 0, 0, 0.08);
+    --white: #ffffff;
+    --wash: rgba(255, 255, 255, 0.92);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    color: var(--ink);
+    background: #fff;
+  }
+  #app { position: relative; width: 100%; height: 100%; overflow: hidden; }
+
+  #map {
+    position: absolute; inset: 0;
+    background: #f5f5f5;
+  }
+  .leaflet-tile-pane { filter: grayscale(1) contrast(1.05) brightness(1.08); }
+  .leaflet-control-attribution {
+    background: rgba(255,255,255,.85) !important;
+    color: #888 !important;
+    font-size: 10px !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  .leaflet-control-zoom a {
+    background: #fff !important;
+    color: #111 !important;
+    border: 1px solid var(--line) !important;
+    width: 30px !important;
+    height: 30px !important;
+    line-height: 30px !important;
+    border-radius: 0 !important;
+  }
+  .leaflet-bar { border: none !important; box-shadow: none !important; }
+
+  #watercolor {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    z-index: 450;
+    /* normal: pale yellows/oranges stay visible on the white map */
+    mix-blend-mode: normal;
+  }
+
+  #brand {
+    position: absolute; top: 24px; left: 72px; z-index: 800;
+    pointer-events: none;
+    max-width: min(440px, calc(100vw - 96px));
+  }
+  #brand h1 {
+    margin: 0;
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-weight: 600;
+    font-size: clamp(32px, 4.5vw, 48px);
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--ink);
+  }
+  #brand p {
+    margin: 10px 0 0;
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: clamp(15px, 1.6vw, 18px);
+    line-height: 1.35;
+    color: var(--muted);
+    max-width: 28ch;
+  }
+
+  #panel {
+    position: absolute; top: 24px; right: 24px; z-index: 800;
+    width: min(280px, calc(100vw - 48px));
+    background: var(--wash);
+    border: 1px solid var(--line);
+    border-radius: 0;
+    padding: 18px;
+  }
+  #panel h2 {
+    margin: 0 0 4px;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  #panel .hint {
+    margin: 0 0 16px;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.4;
+    font-weight: 400;
+  }
+  .step { margin-bottom: 16px; }
+  .step-label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .step-note {
+    margin: 8px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.35;
+  }
+  .step-note.ready { color: var(--ink); font-weight: 500; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--ink);
+    border-radius: 0;
+    padding: 9px 14px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .btn:hover { background: #f7f7f7; border-color: rgba(0,0,0,.18); }
+  .btn:active { background: #f0f0f0; }
+  .btn.primary {
+    background: var(--ink);
+    color: #fff;
+    border-color: var(--ink);
+    width: 100%;
+  }
+  .btn.primary:hover { background: #333; }
+  .btn.primary:disabled {
+    opacity: .3; cursor: not-allowed;
+  }
+  .btn.ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--muted);
+    padding-left: 0;
+    padding-right: 12px;
+  }
+  .btn.ghost:hover { color: var(--ink); background: transparent; }
+  .btn.block { width: 100%; }
+  #fileInput { display: none; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .actions.tight { margin-top: 12px; margin-bottom: 0; }
+  .status {
+    min-height: 32px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--muted);
+    padding: 12px 0 0;
+    border-top: 1px solid var(--line);
+    margin-top: 14px;
+  }
+  .status strong { color: var(--ink); font-weight: 600; }
+  .swatch {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    vertical-align: 0; margin-right: 5px;
+  }
+
+  /* Intensity is the only colorful UI chrome */
+  #legend {
+    position: absolute; left: 24px; bottom: 24px; z-index: 800;
+    width: min(260px, calc(100vw - 48px));
+    background: var(--wash);
+    border: 1px solid var(--line);
+    border-radius: 0;
+    padding: 12px 14px;
+  }
+  #legend .scale-title {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  #legend .scale-bar {
+    height: 8px;
+    border-radius: 0;
+    background: linear-gradient(
+      90deg,
+      #ffe566 0%,
+      #ffd466 18%,
+      #ffaa32 38%,
+      #ff6e1e 62%,
+      #e03228 82%,
+      #c81414 100%
+    );
+  }
+  #legend .scale-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 7px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  #legend .scale-labels span:last-child { color: #c62828; font-weight: 600; }
+
+  #spotCount {
+    position: absolute; right: 24px; bottom: 24px; z-index: 800;
+    background: var(--wash);
+    border: 1px solid var(--line);
+    border-radius: 0;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  #spotCount #countVal { color: var(--ink); font-weight: 600; }
+
+  .pin-pulse {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #111;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 4px rgba(0,0,0,.08);
+  }
+
+  @media (max-width: 720px) {
+    #brand { top: 14px; left: 48px; }
+    #brand p { font-size: 14px; }
+    #panel {
+      top: auto; bottom: 0; right: 0; left: 0;
+      width: 100%;
+      max-height: 46vh; overflow: auto;
+      border-left: none; border-right: none; border-bottom: none;
+    }
+    #legend { left: 14px; bottom: auto; top: 88px; width: min(180px, calc(100vw - 100px)); }
+    #spotCount { bottom: auto; top: 14px; right: 14px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+  <canvas id="watercolor"></canvas>
+
+  <div id="brand">
+    <h1>Silence in NYC</h1>
+    <p>New York I love you but I need some silence right now</p>
+  </div>
+
+  <aside id="panel">
+    <h2>Add a sound</h2>
+    <p class="hint">Place yourself, add a voice note, paint.</p>
+
+    <div class="step">
+      <span class="step-label">1 · Place</span>
+      <button class="btn block" id="btnLocate" type="button">Share my position</button>
+      <p class="step-note" id="placeNote">Or tap anywhere on the map.</p>
+    </div>
+
+    <div class="step">
+      <span class="step-label">2 · Sound</span>
+      <div class="actions">
+        <button class="btn" id="btnUpload" type="button">Upload</button>
+        <button class="btn" id="btnRecord" type="button">Record 5s</button>
+        <input type="file" id="fileInput" accept="audio/*,.m4a,.mp3,.wav,.ogg,.webm">
+      </div>
+      <p class="step-note" id="soundNote">No sound yet.</p>
+    </div>
+
+    <button class="btn primary" id="btnPaint" type="button" disabled>Paint</button>
+
+    <div class="actions tight">
+      <button class="btn ghost" id="btnClear" type="button">Reset pin</button>
+      <button class="btn ghost" id="btnSave" type="button">Download PNG</button>
+    </div>
+
+    <div class="status" id="status">Tap the map or share your position to begin.</div>
+  </aside>
+
+  <div id="legend">
+    <div class="scale-title">Sound intensity</div>
+    <div class="scale-bar" aria-hidden="true"></div>
+    <div class="scale-labels">
+      <span>Quiet</span>
+      <span>Street</span>
+      <span>Alert</span>
+    </div>
+  </div>
+
+  <div id="spotCount"><span id="countVal">0</span> sounds</div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+  const MANHATTAN = {
+    center: [40.758, -73.9855],
+    // Island only — Battery → Inwood, Hudson → East River
+    bounds: L.latLngBounds([40.698, -74.022], [40.878, -73.906]),
+  };
+  const RADIUS_M = 2.5; // personal field recordings
+  const RADIUS_311_M = 1.8; // denser 311 washes
+  const MIN_RADIUS_PX = 5;
+  const STORAGE_KEY = "fresque-sonore-spots-v4";
+
+  // Tyler Hobbs watercolor: stacked low-opacity deformed polygons
+  // https://www.tylerxhobbs.com/words/a-guide-to-simulating-watercolor-paint-with-generative-art
+  const WC_SIDES = 7;
+  const WC_BASE_DEPTH = 4;
+  const WC_LAYER_DEPTH = 2;
+  const WC_LAYERS = 32;
+  const WC_LAYER_ALPHA = 0.04;
+
+  // 311 color families: street = yellow/orange, vehicle = orange, helicopter = red
+  const INTENSITY_311_TYPE = {
+    "Noise - Street/Sidewalk": 0.36,
+    "Noise - Vehicle": 0.58,
+    "Noise - Helicopter": 0.93,
+  };
+  // Descriptor nudges within the type’s band (not across families)
+  const INTENSITY_311_DESCRIPTOR = {
+    "Loud Talking": -0.08,
+    "Engine Idling": -0.06,
+    "Car/Truck Music": 0.04,
+    "Loud Music/Party": 0.1,
+    "Car/Truck Horn": 0.12,
+    Other: 0.0,
+    "News Gathering": 0.02,
+    NYPD: 0.04,
+  };
+  const INTENSITY_311_BAND = {
+    "Noise - Street/Sidewalk": [0.22, 0.52], // yellow → orange
+    "Noise - Vehicle": [0.48, 0.72], // orange
+    "Noise - Helicopter": [0.86, 1.0], // red
+  };
+
+  // Loudness / harshness bands (plus legacy class labels from older paints)
+  const STRESS_BY_LABEL = {
+    silence: 0.05,
+    quiet: 0.18,
+    soft: 0.32,
+    lively: 0.48,
+    noisy: 0.68,
+    harsh: 0.88,
+    no_sound: 0.05,
+    air_conditioner: 0.08,
+    children_playing: 0.18,
+    street_music: 0.22,
+    dog_bark: 0.26,
+    engine_idling: 0.28,
+    car_horn: 0.45,
+    drilling: 0.52,
+    jackhammer: 0.55,
+    gun_shot: 0.6,
+    siren: 0.65,
+  };
+
+  // Quiet → street → alert — stronger mid tones so a single spot reads on white
+  const INTENSITY_STOPS = [
+    { t: 0.0, c: [255, 236, 150] },
+    { t: 0.22, c: [255, 214, 100] },
+    { t: 0.45, c: [255, 170, 50] },
+    { t: 0.65, c: [255, 110, 30] },
+    { t: 0.82, c: [230, 50, 40] },
+    { t: 1.0, c: [200, 20, 20] },
+  ];
+
+  const map = L.map("map", {
+    center: MANHATTAN.center,
+    zoom: 13,
+    minZoom: 13, // only limit: cannot zoom out further than this
+    maxZoom: 20,
+    zoomControl: true,
+  });
+  let basemapLayer = null;
+  function setBasemap(cartoKey) {
+    if (basemapLayer) map.removeLayer(basemapLayer);
+    const keyQ = cartoKey ? `?key=${encodeURIComponent(cartoKey)}` : "";
+    basemapLayer = L.tileLayer(
+      `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png${keyQ}`,
+      {
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        subdomains: "abcd",
+        maxZoom: 20,
+      }
+    ).addTo(map);
+  }
+  // Wait for /api/config before adding tiles — CARTO watermark appears without a key
+
+  const canvas = document.getElementById("watercolor");
+  const ctx = canvas.getContext("2d", { alpha: true });
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  /** @type {{lat:number,lng:number,color:string,label:string,score:number,intensity?:number,stress?:number,rms?:number,id:string}[]} */
+  let spots = [];
+  let audioFile = null;
+  let place = null; // { lat, lng }
+  let pin = null;
+
+  const el = {
+    status: document.getElementById("status"),
+    paint: document.getElementById("btnPaint"),
+    count: document.getElementById("countVal"),
+    placeNote: document.getElementById("placeNote"),
+    soundNote: document.getElementById("soundNote"),
+  };
+
+  const STORAGE_311_KEY = "fresque-sonore-311-v1";
+
+  // 311 complaints → always on, same watercolor as field recordings
+  /** @type {{id:string,lat:number,lng:number,label:string,intensity:number,score:number,source:string,descriptor?:string,date?:string}[]} */
+  let complaints311 = [];
+  let loading311 = false;
+  let paintRaf = 0;
+
+  function intensityFrom311(type, descriptor) {
+    const base = INTENSITY_311_TYPE[type] ?? 0.55;
+    const band = INTENSITY_311_BAND[type] || [0.2, 0.9];
+    const desc = String(descriptor || "").trim();
+    let t = base;
+    if (desc && Object.prototype.hasOwnProperty.call(INTENSITY_311_DESCRIPTOR, desc)) {
+      t += INTENSITY_311_DESCRIPTOR[desc];
+    } else if (desc) {
+      const lower = desc.toLowerCase();
+      if (/horn|siren|alarm/.test(lower)) t += 0.1;
+      else if (/music|party|bass/.test(lower)) t += 0.06;
+      else if (/talk|idle|idling/.test(lower)) t -= 0.06;
+    }
+    return Math.max(band[0], Math.min(band[1], t));
+  }
+
+  function complaintToSpot(p) {
+    const label = p.type || "Noise - Street/Sidewalk";
+    return {
+      id: `311-${p.id}`,
+      lat: p.lat,
+      lng: p.lng,
+      label,
+      intensity: intensityFrom311(label, p.descriptor),
+      score: 1,
+      source: "311",
+      descriptor: p.descriptor || "",
+      date: p.date || "",
+    };
+  }
+
+  function apply311Points(rawPoints) {
+    complaints311 = (rawPoints || []).map(complaintToSpot);
+    try {
+      localStorage.setItem(
+        STORAGE_311_KEY,
+        JSON.stringify({ savedAt: Date.now(), points: rawPoints || [] })
+      );
+    } catch (_) {}
+    schedulePaint();
+  }
+
+  function hydrate311FromLocal() {
+    try {
+      const raw = localStorage.getItem(STORAGE_311_KEY);
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      if (!Array.isArray(data.points) || !data.points.length) return false;
+      complaints311 = data.points.map(complaintToSpot);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function schedulePaint() {
+    if (paintRaf) return;
+    paintRaf = requestAnimationFrame(() => {
+      paintRaf = 0;
+      paintWatercolor();
+    });
+  }
+
+  async function load311() {
+    if (loading311) return;
+    loading311 = true;
+    try {
+      const res = await fetch(apiUrl("/api/311/noise?days=90&kind=all&limit=6000"));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || "Could not load 311");
+      if (Array.isArray(data.points) && data.points.length) {
+        apply311Points(data.points);
+      } else if (data.warming && !complaints311.length) {
+        // Server still warming — retry shortly; local cache may already be painting
+        setTimeout(() => {
+          loading311 = false;
+          load311();
+        }, 2500);
+        return;
+      }
+    } catch (_) {
+      // Keep whatever we already hydrated from localStorage
+    } finally {
+      loading311 = false;
+    }
+  }
+
+  // Resolve API host: same origin when served by FastAPI, else localhost:8765
+  let API_BASE = "";
+  function apiUrl(path) {
+    return `${API_BASE}${path}`;
+  }
+  async function resolveApiBase() {
+    const candidates = [];
+    if (location.protocol.startsWith("http")) candidates.push("");
+    candidates.push("http://127.0.0.1:8765");
+    for (const base of candidates) {
+      try {
+        const res = await fetch(`${base}/api/health`, { cache: "no-store" });
+        if (res.ok) {
+          API_BASE = base;
+          return true;
+        }
+      } catch (_) {}
+    }
+    return false;
+  }
+
+  function cacheSpotsLocally() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(spots));
+    el.count.textContent = String(spots.length);
+  }
+
+  async function persistSpot(spot) {
+    cacheSpotsLocally();
+    const res = await fetch(apiUrl("/api/spots"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(spot),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || res.statusText || "Save failed");
+    }
+    return res.json();
+  }
+
+  async function loadSpotsFromServer() {
+    const res = await fetch(apiUrl("/api/spots"));
+    if (!res.ok) throw new Error("Could not load sounds");
+    const data = await res.json();
+    return data.spots || [];
+  }
+
+  // Drop old seed keys
+  localStorage.removeItem("fresque-sonore-seed-version");
+  localStorage.removeItem("fresque-sonore-spots-v3");
+  localStorage.removeItem("fresque-sonore-spots-v2");
+  localStorage.removeItem("fresque-sonore-spots-v1");
+
+  function setStatus(html) {
+    el.status.innerHTML = html;
+  }
+
+  function syncPaintEnabled() {
+    el.paint.disabled = !(audioFile && place);
+  }
+
+  function placePin(lat, lng, source) {
+    // Snap into Manhattan if GPS / tap lands outside
+    const ll = L.latLng(lat, lng);
+    if (!MANHATTAN.bounds.contains(ll)) {
+      lat = Math.min(Math.max(lat, MANHATTAN.bounds.getSouth()), MANHATTAN.bounds.getNorth());
+      lng = Math.min(Math.max(lng, MANHATTAN.bounds.getWest()), MANHATTAN.bounds.getEast());
+    }
+    place = { lat, lng };
+    if (pin) map.removeLayer(pin);
+    pin = L.marker([lat, lng], {
+      icon: L.divIcon({ className: "", html: '<div class="pin-pulse"></div>', iconSize: [14, 14], iconAnchor: [7, 7] }),
+    }).addTo(map);
+    el.placeNote.textContent = source === "gps" ? "Using your position." : "Placed on the map.";
+    el.placeNote.classList.add("ready");
+    syncPaintEnabled();
+  }
+
+  function setSound(file, label) {
+    audioFile = file;
+    el.soundNote.textContent = label;
+    el.soundNote.classList.add("ready");
+    syncPaintEnabled();
+  }
+
+  function metersToPixels(meters, lat) {
+    const zoom = map.getZoom();
+    const mpp = (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, zoom);
+    return meters / mpp;
+  }
+
+  function spotIntensity(s) {
+    // Prefer server analysis intensity (loudness + high-frequency harshness)
+    if (typeof s.intensity === "number" && Number.isFinite(s.intensity)) {
+      return Math.max(0, Math.min(1, s.intensity));
+    }
+    const stress = STRESS_BY_LABEL[s.label] ?? (typeof s.stress === "number" ? s.stress : 0.25);
+    const score = typeof s.score === "number" ? s.score : 0.7;
+    const rms = typeof s.rms === "number" ? s.rms : 0.12;
+    const loud = Math.max(0.5, Math.min(1.05, 0.55 + (rms / 0.35) * 0.35));
+    return stress * score * loud;
+  }
+
+  function intensityToRgb(t) {
+    t = Math.max(0, Math.min(1, t));
+    for (let i = 0; i < INTENSITY_STOPS.length - 1; i++) {
+      const a = INTENSITY_STOPS[i];
+      const b = INTENSITY_STOPS[i + 1];
+      if (t >= a.t && t <= b.t) {
+        const u = (t - a.t) / (b.t - a.t || 1);
+        return [
+          Math.round(a.c[0] + (b.c[0] - a.c[0]) * u),
+          Math.round(a.c[1] + (b.c[1] - a.c[1]) * u),
+          Math.round(a.c[2] + (b.c[2] - a.c[2]) * u),
+        ];
+      }
+    }
+    return INTENSITY_STOPS[INTENSITY_STOPS.length - 1].c;
+  }
+
+  function resizeCanvas() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    paintWatercolor();
+  }
+
+  function spotSeed(s) {
+    const key = s.id || `${s.lat},${s.lng},${s.label}`;
+    let h = 2166136261;
+    for (let i = 0; i < key.length; i++) {
+      h ^= key.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0;
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function gauss(rnd) {
+    let u = 0;
+    let v = 0;
+    while (u === 0) u = rnd();
+    while (v === 0) v = rnd();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  /** Regular polygon with per-edge variance (sharp vs soft borders). */
+  function makeRegularPoly(sides, radius, rnd) {
+    const pts = [];
+    const rot = rnd() * Math.PI * 2;
+    for (let i = 0; i < sides; i++) {
+      const a = rot + (i / sides) * Math.PI * 2;
+      pts.push({
+        x: Math.cos(a) * radius,
+        y: Math.sin(a) * radius,
+        v: 0.2 + rnd() * 0.9,
+      });
+    }
+    return pts;
+  }
+
+  /** One subdivision pass: midpoint → Gaussian offset (Hobbs). */
+  function deformOnce(poly, rnd, scale) {
+    const out = [];
+    const n = poly.length;
+    for (let i = 0; i < n; i++) {
+      const A = poly[i];
+      const C = poly[(i + 1) % n];
+      out.push(A);
+      const mx = (A.x + C.x) * 0.5;
+      const my = (A.y + C.y) * 0.5;
+      const std = ((A.v + C.v) * 0.5) * scale;
+      const childV = ((A.v + C.v) * 0.5) * (0.65 + rnd() * 0.4);
+      out.push({
+        x: mx + gauss(rnd) * std,
+        y: my + gauss(rnd) * std,
+        v: childV,
+      });
+    }
+    return out;
+  }
+
+  function deform(poly, rnd, depth, baseScale) {
+    let p = poly;
+    for (let d = 0; d < depth; d++) {
+      p = deformOnce(p, rnd, baseScale / Math.pow(1.35, d));
+    }
+    return p;
+  }
+
+  // Unit-space layer polygons cached per seed (static; redrawn at any zoom)
+  /** @type {Map<number, {poly:{x:number,y:number}[], wash:boolean}[]>} */
+  const layerCache = new Map();
+
+  function getWatercolorLayers(seed) {
+    if (layerCache.has(seed)) return layerCache.get(seed);
+
+    const rndBase = mulberry32(seed);
+    let base = makeRegularPoly(WC_SIDES, 1, rndBase);
+    base = deform(base, rndBase, WC_BASE_DEPTH, 0.42);
+
+    const rndLayer = mulberry32(seed ^ 0x85ebca6b);
+    const layers = [];
+    for (let i = 0; i < WC_LAYERS; i++) {
+      // Interleave pigment with pale wash (red → white), per Hobbs color blending tip
+      const wash = i % 5 === 4;
+      const poly = deform(
+        base.map((p) => ({ x: p.x, y: p.y, v: p.v })),
+        rndLayer,
+        WC_LAYER_DEPTH,
+        0.2
+      ).map((p) => ({ x: p.x, y: p.y }));
+      layers.push({ poly, wash });
+    }
+    layerCache.set(seed, layers);
+    return layers;
+  }
+
+  function fillPoly(target, poly, cx, cy, scale) {
+    target.beginPath();
+    for (let i = 0; i < poly.length; i++) {
+      const px = cx + poly[i].x * scale;
+      const py = cy + poly[i].y * scale;
+      if (i === 0) target.moveTo(px, py);
+      else target.lineTo(px, py);
+    }
+    target.closePath();
+    target.fill();
+  }
+
+  function drawHobbsSpot(target, cx, cy, rPx, rgb, seed, intensity) {
+    const layers = getWatercolorLayers(seed);
+    const pigment = rgb;
+    const washRgb = [
+      Math.round(pigment[0] + (255 - pigment[0]) * 0.62),
+      Math.round(pigment[1] + (255 - pigment[1]) * 0.62),
+      Math.round(pigment[2] + (255 - pigment[2]) * 0.62),
+    ];
+    const alphaScale = 0.75 + intensity * 0.55;
+
+    // Soft white-tinted bloom under the stack (diffuse fade)
+    const halo = target.createRadialGradient(cx, cy, rPx * 0.15, cx, cy, rPx * 2.2);
+    halo.addColorStop(0, `rgba(${pigment[0]},${pigment[1]},${pigment[2]},${0.1 * alphaScale})`);
+    halo.addColorStop(0.45, `rgba(${washRgb[0]},${washRgb[1]},${washRgb[2]},${0.06 * alphaScale})`);
+    halo.addColorStop(1, "rgba(255,255,255,0)");
+    target.fillStyle = halo;
+    target.beginPath();
+    target.arc(cx, cy, rPx * 2.2, 0, Math.PI * 2);
+    target.fill();
+
+    for (const layer of layers) {
+      const [r, g, b] = layer.wash ? washRgb : pigment;
+      const a = WC_LAYER_ALPHA * alphaScale * (layer.wash ? 0.55 : 1);
+      target.fillStyle = `rgba(${r},${g},${b},${a})`;
+      fillPoly(target, layer.poly, cx, cy, rPx);
+    }
+
+    // Light texture masking: punched micro-circles (Hobbs), seed-stable
+    const rndTex = mulberry32(seed ^ 0xc2b2ae35);
+    target.save();
+    target.globalCompositeOperation = "destination-out";
+    const holes = 18 + Math.floor(rndTex() * 22);
+    for (let i = 0; i < holes; i++) {
+      const ang = rndTex() * Math.PI * 2;
+      const d = Math.sqrt(rndTex()) * rPx * 0.95;
+      const len = (0.04 + Math.abs(gauss(rndTex)) * 0.06) * rPx;
+      target.beginPath();
+      target.arc(cx + Math.cos(ang) * d, cy + Math.sin(ang) * d, Math.max(0.4, len), 0, Math.PI * 2);
+      target.fillStyle = `rgba(0,0,0,${0.08 + rndTex() * 0.2})`;
+      target.fill();
+    }
+    target.restore();
+  }
+
+  function paintBlob(s, radiusM, alphaMul) {
+    const pt = map.latLngToContainerPoint([s.lat, s.lng]);
+    const rPx = Math.max(MIN_RADIUS_PX * 0.85, metersToPixels(radiusM, s.lat));
+    const pad = Math.ceil(rPx * 2.6 + 8);
+    const size = pad * 2;
+    const t = spotIntensity(s);
+    const rgb = intensityToRgb(t);
+
+    const layer = document.createElement("canvas");
+    layer.width = Math.ceil(size * dpr);
+    layer.height = Math.ceil(size * dpr);
+    const lctx = layer.getContext("2d");
+    lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawHobbsSpot(lctx, pad, pad, rPx, rgb, spotSeed(s), t);
+
+    const dx = pt.x - pad;
+    const dy = pt.y - pad;
+    ctx.save();
+    ctx.filter = "blur(0.6px)";
+    ctx.globalAlpha = 0.95 * alphaMul;
+    ctx.drawImage(layer, dx, dy, size, size);
+    ctx.filter = "blur(7px)";
+    ctx.globalAlpha = 0.25 * alphaMul;
+    ctx.drawImage(layer, dx, dy, size, size);
+    ctx.restore();
+  }
+
+  function paintWatercolor() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    ctx.clearRect(0, 0, w, h);
+
+    const bounds = map.getBounds().pad(0.12);
+    const inView = (s) => bounds.contains([s.lat, s.lng]);
+
+    // 311 underpaint first (slightly softer), personal recordings on top
+    if (complaints311.length) {
+      for (const s of complaints311) {
+        if (inView(s)) paintBlob(s, RADIUS_311_M, 0.72);
+      }
+    }
+    for (const s of spots) {
+      if (inView(s)) paintBlob(s, RADIUS_M, 1);
+    }
+  }
+
+  map.on("move zoom resize", () => schedulePaint());
+  window.addEventListener("resize", resizeCanvas);
+
+  // Always: tap map to place
+  map.on("click", (e) => {
+    placePin(e.latlng.lat, e.latlng.lng, "map");
+    setStatus(audioFile ? "Place set. Hit Paint." : "Place set. Add a sound next.");
+  });
+
+  document.getElementById("btnLocate").addEventListener("click", () => {
+    if (!navigator.geolocation) {
+      setStatus("GPS not available — tap the map instead.");
+      return;
+    }
+    setStatus("Getting your position…");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        let { latitude, longitude } = pos.coords;
+        if (!MANHATTAN.bounds.contains([latitude, longitude])) {
+          setStatus("You're outside Manhattan — place snapped to the island. Or tap the map.");
+        }
+        placePin(latitude, longitude, "gps");
+        map.setView(
+          [
+            Math.min(Math.max(latitude, MANHATTAN.bounds.getSouth()), MANHATTAN.bounds.getNorth()),
+            Math.min(Math.max(longitude, MANHATTAN.bounds.getWest()), MANHATTAN.bounds.getEast()),
+          ],
+          Math.max(map.getZoom(), 16)
+        );
+        if (MANHATTAN.bounds.contains([latitude, longitude])) {
+          setStatus(audioFile ? "Position set. Hit Paint." : "Position set. Add a sound next.");
+        }
+      },
+      () => setStatus("Could not get GPS — tap the map instead."),
+      { enableHighAccuracy: true, timeout: 12000 }
+    );
+  });
+
+  document.getElementById("btnUpload").addEventListener("click", () => {
+    document.getElementById("fileInput").click();
+  });
+
+  document.getElementById("fileInput").addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    setSound(f, f.name);
+    setStatus(place ? "Ready — hit Paint." : "Sound ready. Share position or tap the map.");
+  });
+
+  document.getElementById("btnRecord").addEventListener("click", async () => {
+    const btn = document.getElementById("btnRecord");
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus("Mic not available — upload a file instead.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+      recorder.ondataavailable = (ev) => chunks.push(ev.data);
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+        setSound(new File([blob], "voice-note.webm", { type: blob.type }), "Recorded voice note");
+        btn.textContent = "Record 5s";
+        setStatus(place ? "Ready — hit Paint." : "Sound ready. Share position or tap the map.");
+      };
+      recorder.start();
+      btn.textContent = "Recording…";
+      setStatus("Listening…");
+      setTimeout(() => recorder.stop(), 5000);
+    } catch {
+      setStatus("Could not use the mic — upload a file instead.");
+    }
+  });
+
+  document.getElementById("btnPaint").addEventListener("click", async () => {
+    if (!audioFile || !place) return;
+
+    el.paint.disabled = true;
+    setStatus("Analyzing sound…");
+
+    const body = new FormData();
+    body.append("file", audioFile, audioFile.name);
+
+    try {
+      const res = await fetch(apiUrl("/api/classify"), { method: "POST", body });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = typeof data.detail === "string" ? data.detail : res.statusText;
+        throw new Error(detail || "Analysis failed");
+      }
+
+      const color = data.color || "#FFE566";
+      const spot = {
+        id: crypto.randomUUID(),
+        lat: place.lat,
+        lng: place.lng,
+        color,
+        label: data.label || "soft",
+        score: data.score,
+        stress: data.stress,
+        intensity: data.intensity,
+        rms: data.rms,
+      };
+      spots.push(spot);
+      paintWatercolor();
+      map.setView([place.lat, place.lng], Math.max(map.getZoom(), 16));
+
+      try {
+        await persistSpot(spot);
+        setStatus(
+          `<span class="swatch" style="background:${color}"></span>` +
+            `Painted &amp; saved <strong>${escapeHtml(prettyLabel(spot.label))}</strong>.`
+        );
+      } catch (saveErr) {
+        cacheSpotsLocally();
+        setStatus(
+          `<span class="swatch" style="background:${color}"></span>` +
+            `Painted <strong>${escapeHtml(prettyLabel(spot.label))}</strong> (saved on this device only — server save failed).`
+        );
+      }
+      audioFile = null;
+      el.soundNote.textContent = "No sound yet.";
+      el.soundNote.classList.remove("ready");
+      document.getElementById("fileInput").value = "";
+    } catch (err) {
+      const msg = err && err.message === "Failed to fetch"
+        ? "Server unreachable — open http://127.0.0.1:8765/ (run python3 server.py)."
+        : (err && err.message) || "unknown error";
+      setStatus(`Could not analyze: ${escapeHtml(msg)}`);
+    } finally {
+      syncPaintEnabled();
+    }
+  });
+
+  document.getElementById("btnClear").addEventListener("click", () => {
+    setStatus("Clear only removes the pin — sounds stay saved on the server.");
+    if (pin) {
+      map.removeLayer(pin);
+      pin = null;
+    }
+    place = null;
+    el.placeNote.textContent = "Or tap anywhere on the map.";
+    el.placeNote.classList.remove("ready");
+    syncPaintEnabled();
+  });
+
+  document.getElementById("btnSave").addEventListener("click", () => {
+    const exportCanvas = document.createElement("canvas");
+    exportCanvas.width = canvas.width;
+    exportCanvas.height = canvas.height;
+    const ex = exportCanvas.getContext("2d");
+    ex.fillStyle = "#ffffff";
+    ex.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+    ex.drawImage(canvas, 0, 0);
+    ex.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ex.fillStyle = "rgba(17,17,17,.9)";
+    ex.font = "600 28px 'Cormorant Garamond', Georgia, serif";
+    ex.fillText("Silence in NYC", 24, 40);
+    const a = document.createElement("a");
+    a.download = "silence-in-nyc.png";
+    a.href = exportCanvas.toDataURL("image/png");
+    a.click();
+    setStatus("PNG downloaded — the map itself is already saved on the server.");
+  });
+
+  function prettyLabel(label) {
+    return String(label || "").replace(/_/g, " ");
+  }
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  resizeCanvas();
+  map.setView(MANHATTAN.center, 13);
+  // Instant paint from last browser visit while server cache warms
+  if (hydrate311FromLocal()) schedulePaint();
+  setStatus("Loading saved sounds…");
+
+  (async function boot() {
+    const apiOk = await resolveApiBase();
+    if (!apiOk) {
+      setStatus("Server offline — start with <code>python3 server.py</code> then open <a href=\"http://127.0.0.1:8765/\">http://127.0.0.1:8765/</a>.");
+    }
+
+    // Prefer embedded key (no flash / no watermark); fall back to /api/config
+    const embedded = window.__CARTO_API_KEY__;
+    if (embedded) {
+      setBasemap(embedded);
+    } else {
+      try {
+        const cfg = await fetch(apiUrl("/api/config")).then((r) => r.json());
+        if (!cfg.cartoApiKey) throw new Error("missing carto key");
+        setBasemap(cfg.cartoApiKey);
+      } catch (_) {
+        basemapLayer = L.tileLayer(
+          "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+          {
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+            maxZoom: 20,
+          }
+        ).addTo(map);
+      }
+    }
+
+    if (!apiOk) {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        spots = raw ? JSON.parse(raw) : [];
+      } catch {
+        spots = [];
+      }
+      el.count.textContent = String(spots.length);
+      paintWatercolor();
+      return;
+    }
+
+    try {
+      const [serverSpots] = await Promise.all([
+        loadSpotsFromServer().then(async (initial) => {
+          let serverSpots = initial;
+          const localRaw = localStorage.getItem(STORAGE_KEY);
+          if (localRaw) {
+            try {
+              const localSpots = JSON.parse(localRaw);
+              if (Array.isArray(localSpots) && localSpots.length) {
+                await fetch(apiUrl("/api/spots/import"), {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ spots: localSpots }),
+                });
+                serverSpots = await loadSpotsFromServer();
+              }
+            } catch (_) {}
+          }
+          return serverSpots;
+        }),
+        load311(),
+      ]);
+
+      spots = serverSpots;
+      cacheSpotsLocally();
+      paintWatercolor();
+      setStatus(
+        spots.length
+          ? `<strong>${spots.length}</strong> sound${spots.length > 1 ? "s" : ""} loaded — every paint saves automatically.`
+          : "Walk the city. Share your position, record, paint — it saves automatically."
+      );
+    } catch (_) {
+      // Offline fallback
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        spots = raw ? JSON.parse(raw) : [];
+      } catch {
+        spots = [];
+      }
+      el.count.textContent = String(spots.length);
+      paintWatercolor();
+      setStatus("Server offline — painting will stay on this device until the server is back.");
+    }
+  })();
+})();
+</script>
+</body>
+</html>
