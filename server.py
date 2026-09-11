@@ -574,7 +574,7 @@ async def classify(file: UploadFile = File(...)):
 @app.get("/")
 def index():
     """Serve the map with the CARTO key embedded so tiles never load without it."""
-    html = (ROOT / "index.html").read_text(encoding="utf-8")
+    html = (ROOT / "public" / "index.html").read_text(encoding="utf-8")
     key = os.environ.get("CARTO_API_KEY") or os.environ.get("CARTO_KEY") or ""
     inject = f"<script>window.__CARTO_API_KEY__={key!r};</script>"
     if "</head>" in html:

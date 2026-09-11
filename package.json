@@ -1,0 +1,7 @@
+{
+  "name": "fresque-sonore",
+  "scripts": {
+    "build": "echo 'Static site — no build step'"
+  },
+  "dependencies": {}
+}
