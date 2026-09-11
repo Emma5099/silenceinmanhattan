@@ -1,7 +1,10 @@
 {
   "name": "fresque-sonore",
   "scripts": {
-    "build": "echo 'Static site — no build step'"
+    "build": "echo 'Static site — no build step'",
+    "dev": "npx netlify-cli dev"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@netlify/blobs": "^9.1.2"
+  }
 }

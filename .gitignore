@@ -7,3 +7,5 @@ fresque.db
 fresque.db-*
 data/311_noise_cache.json
 data/311_noise_cache.tmp
+node_modules/
+.netlify/

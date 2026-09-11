@@ -512,7 +512,7 @@
     }
   }
 
-  // Resolve API host: same origin when served by FastAPI, else localhost:8765
+  // Resolve API host: same origin (Netlify / FastAPI), else local Python server
   let API_BASE = "";
   function apiUrl(path) {
     return `${API_BASE}${path}`;
@@ -520,7 +520,9 @@
   async function resolveApiBase() {
     const candidates = [];
     if (location.protocol.startsWith("http")) candidates.push("");
-    candidates.push("http://127.0.0.1:8765");
+    if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+      candidates.push("http://127.0.0.1:8765");
+    }
     for (const base of candidates) {
       try {
         const res = await fetch(`${base}/api/health`, { cache: "no-store" });
@@ -531,6 +533,203 @@
       } catch (_) {}
     }
     return false;
+  }
+
+  // Client-side loudness + harshness (same model as the Python server)
+  const SILENCE_RMS = 0.006;
+  const TARGET_SR = 16000;
+  const MID_FREQ_HZ = 800;
+  const HIGH_FREQ_HZ = 2200;
+  const INTENSITY_STOPS = [
+    [0.0, [255, 236, 150]],
+    [0.22, [255, 214, 100]],
+    [0.45, [255, 170, 50]],
+    [0.65, [255, 110, 30]],
+    [0.82, [230, 50, 40]],
+    [1.0, [200, 20, 20]],
+  ];
+  const LABEL_BY_INTENSITY = [
+    [0.12, "silence"],
+    [0.28, "quiet"],
+    [0.45, "soft"],
+    [0.62, "lively"],
+    [0.80, "noisy"],
+    [1.01, "harsh"],
+  ];
+
+  function resampleLinear(input, fromSr, toSr) {
+    if (fromSr === toSr) return input;
+    const ratio = fromSr / toSr;
+    const outLen = Math.max(1, Math.floor(input.length / ratio));
+    const out = new Float32Array(outLen);
+    for (let i = 0; i < outLen; i++) {
+      const src = i * ratio;
+      const i0 = Math.floor(src);
+      const i1 = Math.min(i0 + 1, input.length - 1);
+      const t = src - i0;
+      out[i] = input[i0] * (1 - t) + input[i1] * t;
+    }
+    return out;
+  }
+
+  function peakWindowRms(audio, sr, winS = 0.25) {
+    const win = Math.max(32, Math.floor(sr * winS));
+    if (audio.length <= win) {
+      let s = 0;
+      for (let i = 0; i < audio.length; i++) s += audio[i] * audio[i];
+      return audio.length ? Math.sqrt(s / audio.length) : 0;
+    }
+    const hop = Math.floor(win / 2);
+    let best = 0;
+    for (let i = 0; i <= audio.length - win; i += hop) {
+      let s = 0;
+      for (let j = 0; j < win; j++) s += audio[i + j] * audio[i + j];
+      best = Math.max(best, Math.sqrt(s / win));
+    }
+    return best;
+  }
+
+  function spectralProfile(audio, sr) {
+    // Analyze a short window only — full-clip DFT is too slow in the browser
+    const maxN = 4096;
+    let start = 0;
+    if (audio.length > maxN) {
+      // Prefer the loudest short region
+      const win = maxN;
+      const hop = Math.floor(win / 2);
+      let best = -1;
+      let bestAt = 0;
+      for (let i = 0; i <= audio.length - win; i += hop) {
+        let s = 0;
+        for (let j = 0; j < win; j++) s += audio[i + j] * audio[i + j];
+        if (s > best) {
+          best = s;
+          bestAt = i;
+        }
+      }
+      start = bestAt;
+    }
+    const n = Math.min(maxN, audio.length);
+    if (n < 32) return { centroid: 0, mid: 0, high: 0 };
+
+    const re = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const w = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (n - 1 || 1)));
+      re[i] = audio[start + i] * w;
+    }
+    const half = Math.floor(n / 2) + 1;
+    const power = new Float64Array(half);
+    for (let k = 0; k < half; k++) {
+      let rr = 0;
+      let ii = 0;
+      const ang = (-2 * Math.PI * k) / n;
+      for (let t = 0; t < n; t++) {
+        rr += re[t] * Math.cos(ang * t);
+        ii += re[t] * Math.sin(ang * t);
+      }
+      power[k] = rr * rr + ii * ii;
+    }
+    let total = 1e-12;
+    let weighted = 0;
+    let mid = 0;
+    let high = 0;
+    for (let k = 0; k < half; k++) {
+      const freq = (k * sr) / n;
+      const p = power[k];
+      total += p;
+      weighted += freq * p;
+      if (freq >= MID_FREQ_HZ && freq < HIGH_FREQ_HZ) mid += p;
+      if (freq >= HIGH_FREQ_HZ) high += p;
+    }
+    return {
+      centroid: weighted / total,
+      mid: mid / total,
+      high: high / total,
+    };
+  }
+
+  function loudness01(rms, peakRms) {
+    const level = 0.65 * rms + 0.35 * (peakRms || rms);
+    if (level <= SILENCE_RMS) return 0;
+    const lo = Math.log10(0.025);
+    const hi = Math.log10(0.32);
+    return Math.min(1, Math.max(0, (Math.log10(Math.max(level, 1e-6)) - lo) / (hi - lo)));
+  }
+
+  function harshness01(centroidHz, mid, high) {
+    const bright = Math.min(1, Math.max(0, (centroidHz - 300) / 1800));
+    return Math.min(1, Math.max(0, 0.25 * bright + 0.55 * mid + 0.5 * high));
+  }
+
+  function intensityToHex(t) {
+    t = Math.min(1, Math.max(0, t));
+    for (let i = 0; i < INTENSITY_STOPS.length - 1; i++) {
+      const [t0, c0] = INTENSITY_STOPS[i];
+      const [t1, c1] = INTENSITY_STOPS[i + 1];
+      if (t0 <= t && t <= t1) {
+        const u = (t - t0) / (t1 - t0 || 1);
+        const r = Math.round(c0[0] + (c1[0] - c0[0]) * u);
+        const g = Math.round(c0[1] + (c1[1] - c0[1]) * u);
+        const b = Math.round(c0[2] + (c1[2] - c0[2]) * u);
+        return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`.toUpperCase();
+      }
+    }
+    const [r, g, b] = INTENSITY_STOPS[INTENSITY_STOPS.length - 1][1];
+    return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`.toUpperCase();
+  }
+
+  function analyzeClip(audio, sr) {
+    let sum = 0;
+    for (let i = 0; i < audio.length; i++) sum += audio[i] * audio[i];
+    const rms = audio.length ? Math.sqrt(sum / audio.length) : 0;
+    let intensity;
+    let harshness = 0;
+    let loud = 0;
+    if (rms < SILENCE_RMS) {
+      intensity = 0.04;
+    } else {
+      const peak = peakWindowRms(audio, sr);
+      loud = loudness01(rms, peak);
+      const { centroid, mid, high } = spectralProfile(audio, sr);
+      harshness = harshness01(centroid, mid, high);
+      intensity = Math.min(1, Math.max(0, 0.48 * loud + 0.52 * harshness));
+    }
+    const label = LABEL_BY_INTENSITY.find(([thresh]) => intensity < thresh)[1];
+    return {
+      label,
+      score: 1,
+      color: intensityToHex(intensity),
+      rms,
+      stress: intensity,
+      intensity,
+      harshness,
+      loudness: loud,
+    };
+  }
+
+  async function analyzeAudioFile(file) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) throw new Error("Web Audio not supported in this browser");
+    const ctx = new Ctx();
+    try {
+      const raw = await file.arrayBuffer();
+      const decoded = await ctx.decodeAudioData(raw.slice(0));
+      const len = decoded.length;
+      const ch = decoded.numberOfChannels;
+      const mono = new Float32Array(len);
+      for (let c = 0; c < ch; c++) {
+        const data = decoded.getChannelData(c);
+        for (let i = 0; i < len; i++) mono[i] += data[i] / ch;
+      }
+      // Cap analysis window (~8s) so DFT stays responsive
+      const maxSamples = Math.floor(decoded.sampleRate * 8);
+      const slice = mono.length > maxSamples ? mono.subarray(0, maxSamples) : mono;
+      const audio = resampleLinear(slice, decoded.sampleRate, TARGET_SR);
+      if (audio.length < 1600) throw new Error("Audio too short");
+      return analyzeClip(audio, TARGET_SR);
+    } finally {
+      await ctx.close().catch(() => {});
+    }
   }
 
   function cacheSpotsLocally() {
@@ -927,16 +1126,8 @@
     el.paint.disabled = true;
     setStatus("Analyzing sound…");
 
-    const body = new FormData();
-    body.append("file", audioFile, audioFile.name);
-
     try {
-      const res = await fetch(apiUrl("/api/classify"), { method: "POST", body });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const detail = typeof data.detail === "string" ? data.detail : res.statusText;
-        throw new Error(detail || "Analysis failed");
-      }
+      const data = await analyzeAudioFile(audioFile);
 
       const color = data.color || "#FFE566";
       const spot = {
@@ -972,10 +1163,7 @@
       el.soundNote.classList.remove("ready");
       document.getElementById("fileInput").value = "";
     } catch (err) {
-      const msg = err && err.message === "Failed to fetch"
-        ? "Server unreachable — open http://127.0.0.1:8765/ (run python3 server.py)."
-        : (err && err.message) || "unknown error";
-      setStatus(`Could not analyze: ${escapeHtml(msg)}`);
+      setStatus(`Could not analyze: ${escapeHtml((err && err.message) || "unknown error")}`);
     } finally {
       syncPaintEnabled();
     }
@@ -1032,7 +1220,7 @@
   (async function boot() {
     const apiOk = await resolveApiBase();
     if (!apiOk) {
-      setStatus("Server offline — start with <code>python3 server.py</code> then open <a href=\"http://127.0.0.1:8765/\">http://127.0.0.1:8765/</a>.");
+      setStatus("API offline — map still works; new paints stay on this device until deploy finishes.");
     }
 
     // Prefer embedded key (no flash / no watermark); fall back to /api/config

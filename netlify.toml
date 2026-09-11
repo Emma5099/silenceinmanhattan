@@ -3,7 +3,31 @@
   functions = "netlify/functions"
   publish = "public"
 
+[functions]
+  node_bundler = "esbuild"
+  included_files = ["netlify/lib/**"]
+
 [[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
+  from = "/api/health"
+  to = "/.netlify/functions/health"
+  status = 200
+
+[[redirects]]
+  from = "/api/config"
+  to = "/.netlify/functions/config"
+  status = 200
+
+[[redirects]]
+  from = "/api/spots/import"
+  to = "/.netlify/functions/spots-import"
+  status = 200
+
+[[redirects]]
+  from = "/api/spots"
+  to = "/.netlify/functions/spots"
+  status = 200
+
+[[redirects]]
+  from = "/api/311/noise"
+  to = "/.netlify/functions/noise-311"
   status = 200
