@@ -492,9 +492,17 @@
     if (loading311) return;
     loading311 = true;
     try {
-      const res = await fetch(apiUrl("/api/311/noise?days=90&kind=all&limit=6000"));
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || "Could not load 311");
+      let data = null;
+      try {
+        const res = await fetch(apiUrl("/api/311/noise?days=90&kind=all&limit=6000"));
+        data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || "Could not load 311");
+      } catch (_) {
+        // Static snapshot shipped with the site (works even if the function is cold/down)
+        const res = await fetch("/data/311_noise_cache.json", { cache: "force-cache" });
+        data = await res.json().catch(() => ({}));
+        if (!res.ok || !Array.isArray(data.points)) throw new Error("Could not load 311");
+      }
       if (Array.isArray(data.points) && data.points.length) {
         apply311Points(data.points);
       } else if (data.warming && !complaints311.length) {
@@ -1232,6 +1240,7 @@
         spots = [];
       }
       el.count.textContent = String(spots.length);
+      await load311();
       paintWatercolor();
       return;
     }
@@ -1268,7 +1277,7 @@
           : "Walk the city. Share your position, record, paint — it saves automatically."
       );
     } catch (_) {
-      // Offline fallback
+      // Offline fallback — still try the 311 snapshot
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         spots = raw ? JSON.parse(raw) : [];
@@ -1276,6 +1285,7 @@
         spots = [];
       }
       el.count.textContent = String(spots.length);
+      await load311();
       paintWatercolor();
       setStatus("Server offline — painting will stay on this device until the server is back.");
     }

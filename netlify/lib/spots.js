@@ -1,4 +1,4 @@
-const { getStore } = require("@netlify/blobs");
+const { connectLambda, getStore } = require("@netlify/blobs");
 
 const STORE_NAME = "fresque";
 const SPOTS_KEY = "manhattan-spots";
@@ -23,16 +23,36 @@ function cors(event) {
   return null;
 }
 
-async function readSpots() {
-  const store = getStore(STORE_NAME);
-  const data = await store.get(SPOTS_KEY, { type: "json" });
+/** Classic `exports.handler` needs this before getStore(). */
+function initBlobs(event) {
+  if (event) connectLambda(event);
+}
+
+function store(event) {
+  initBlobs(event);
+  return getStore(STORE_NAME);
+}
+
+async function readSpots(event) {
+  const data = await store(event).get(SPOTS_KEY, { type: "json" });
   if (!data || !Array.isArray(data.spots)) return [];
   return data.spots;
 }
 
-async function writeSpots(spots) {
-  const store = getStore(STORE_NAME);
-  await store.setJSON(SPOTS_KEY, { spots, updated_at: new Date().toISOString() });
+async function writeSpots(event, spots) {
+  await store(event).setJSON(SPOTS_KEY, {
+    spots,
+    updated_at: new Date().toISOString(),
+  });
 }
 
-module.exports = { json, cors, readSpots, writeSpots, getStore, STORE_NAME };
+module.exports = {
+  json,
+  cors,
+  initBlobs,
+  store,
+  readSpots,
+  writeSpots,
+  getStore,
+  STORE_NAME,
+};

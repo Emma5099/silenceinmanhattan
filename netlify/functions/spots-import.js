@@ -12,7 +12,7 @@ exports.handler = async (event) => {
   try {
     const body = JSON.parse(event.body || "{}");
     const incoming = Array.isArray(body.spots) ? body.spots : [];
-    const spots = await readSpots();
+    const spots = await readSpots(event);
     const byId = new Map(spots.map((s) => [s.id, s]));
     let imported = 0;
 
@@ -40,7 +40,7 @@ exports.handler = async (event) => {
     }
 
     const next = Array.from(byId.values());
-    await writeSpots(next);
+    await writeSpots(event, next);
     return json(200, { imported, count: next.length });
   } catch (err) {
     return json(500, { detail: err.message || "Import failed" });

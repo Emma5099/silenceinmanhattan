@@ -1,4 +1,4 @@
-const { json, cors, readSpots } = require("../lib/spots");
+const { json, cors, readSpots, initBlobs } = require("../lib/spots");
 
 exports.handler = async (event) => {
   const preflight = cors(event);
@@ -6,9 +6,10 @@ exports.handler = async (event) => {
 
   let spots = 0;
   try {
-    spots = (await readSpots()).length;
+    initBlobs(event);
+    spots = (await readSpots(event)).length;
   } catch (_) {
-    // Blobs may be unavailable in some local contexts
+    // Blobs may be unavailable; health should still succeed
   }
 
   return json(200, {

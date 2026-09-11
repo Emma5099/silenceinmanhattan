@@ -7,8 +7,17 @@ exports.handler = async (event) => {
 
   try {
     if (event.httpMethod === "GET") {
-      const spots = await readSpots();
-      return json(200, { spots, count: spots.length });
+      try {
+        const spots = await readSpots(event);
+        return json(200, { spots, count: spots.length });
+      } catch (err) {
+        // Don't block the map UI if Blobs isn't ready yet
+        return json(200, {
+          spots: [],
+          count: 0,
+          warning: err.message || "Storage unavailable",
+        });
+      }
     }
 
     if (event.httpMethod === "POST") {
@@ -21,7 +30,7 @@ exports.handler = async (event) => {
         return json(400, { detail: "lat, lng, and label are required" });
       }
 
-      const spots = await readSpots();
+      const spots = await readSpots(event);
       const saved = {
         id: body.id || randomUUID(),
         map_id: "manhattan",
@@ -42,7 +51,7 @@ exports.handler = async (event) => {
       if (idx >= 0) spots[idx] = { ...spots[idx], ...saved };
       else spots.push(saved);
 
-      await writeSpots(spots);
+      await writeSpots(event, spots);
       return json(200, saved);
     }
 
