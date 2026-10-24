@@ -6,46 +6,57 @@
 <title>Silence in NYC</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
 <style>
   :root {
-    --ink: #111111;
-    --muted: #6b6b6b;
-    --line: rgba(0, 0, 0, 0.08);
+    --ink: #ffffff;
+    --muted: rgba(255, 255, 255, 0.72);
+    --line: rgba(180, 200, 230, 0.14);
+    --accent: #7ab0f0;
+    --panel-ink: #12161c;
+    --panel-muted: #5a6570;
     --white: #ffffff;
-    --wash: rgba(255, 255, 255, 0.92);
+    --wash: rgba(18, 22, 32, 0.82);
+    --font-display: "Space Grotesk", system-ui, sans-serif;
+    --font-ui: "Sora", system-ui, sans-serif;
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; width: 100%; height: 100%;
-    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-family: var(--font-ui);
     color: var(--ink);
-    background: #fff;
+    background: #0b0e14;
+    -webkit-font-smoothing: antialiased;
   }
   #app { position: relative; width: 100%; height: 100%; overflow: hidden; }
 
   #map {
     position: absolute; inset: 0;
-    background: #f5f5f5;
+    background: #0b0e14;
   }
-  .leaflet-tile-pane { filter: grayscale(1) contrast(1.05) brightness(1.08); }
+  .leaflet-tile-pane { filter: contrast(1.05) brightness(0.92); }
   .leaflet-control-attribution {
-    background: rgba(255,255,255,.85) !important;
-    color: #888 !important;
-    font-size: 10px !important;
+    background: rgba(12, 16, 24, .85) !important;
+    color: #7a889c !important;
+    font-family: var(--font-ui) !important;
+    font-size: 9px !important;
+    letter-spacing: 0.02em;
     border: none !important;
     box-shadow: none !important;
   }
+  .leaflet-control-attribution a { color: #9aaccc !important; }
   .leaflet-control-zoom a {
-    background: #fff !important;
-    color: #111 !important;
+    background: var(--wash) !important;
+    color: var(--ink) !important;
     border: 1px solid var(--line) !important;
-    width: 30px !important;
-    height: 30px !important;
-    line-height: 30px !important;
+    width: 32px !important;
+    height: 32px !important;
+    line-height: 32px !important;
     border-radius: 0 !important;
+    font-family: var(--font-ui) !important;
+    backdrop-filter: blur(10px);
   }
   .leaflet-bar { border: none !important; box-shadow: none !important; }
 
@@ -53,66 +64,72 @@
     position: absolute; inset: 0;
     pointer-events: none;
     z-index: 450;
-    /* normal: pale yellows/oranges stay visible on the white map */
-    mix-blend-mode: normal;
-    /* one soft blur for the whole layer — avoid per-spot canvas filters */
-    filter: blur(1.2px);
+    mix-blend-mode: screen;
+    /* wet glow on the dark basemap */
+    filter: blur(2.2px) saturate(1.5) brightness(1.12);
+    will-change: transform;
+    transform-origin: 0 0;
   }
 
   #brand {
-    position: absolute; top: 24px; left: 72px; z-index: 800;
+    position: absolute; top: 28px; left: 76px; z-index: 800;
     pointer-events: none;
-    max-width: min(440px, calc(100vw - 96px));
+    max-width: min(460px, calc(100vw - 96px));
   }
   #brand h1 {
     margin: 0;
-    font-family: "Cormorant Garamond", Georgia, serif;
+    font-family: var(--font-display);
     font-weight: 600;
-    font-size: clamp(32px, 4.5vw, 48px);
-    letter-spacing: -0.02em;
-    line-height: 1;
-    color: var(--ink);
+    font-size: clamp(34px, 4.8vw, 52px);
+    letter-spacing: -0.045em;
+    line-height: 0.98;
+    color: #ffffff;
+    text-shadow: 0 1px 18px rgba(0, 0, 0, 0.55);
   }
   #brand p {
-    margin: 10px 0 0;
-    font-family: "Cormorant Garamond", Georgia, serif;
-    font-style: italic;
-    font-weight: 500;
-    font-size: clamp(15px, 1.6vw, 18px);
-    line-height: 1.35;
-    color: var(--muted);
-    max-width: 28ch;
+    margin: 12px 0 0;
+    font-family: var(--font-ui);
+    font-style: normal;
+    font-weight: 400;
+    font-size: clamp(13px, 1.4vw, 15px);
+    letter-spacing: -0.01em;
+    line-height: 1.45;
+    color: rgba(255, 255, 255, 0.78);
+    max-width: 32ch;
+    text-shadow: 0 1px 12px rgba(0, 0, 0, 0.5);
   }
 
   #panel {
     position: absolute; top: 24px; right: 24px; z-index: 800;
-    width: min(280px, calc(100vw - 48px));
+    width: min(288px, calc(100vw - 48px));
     background: var(--wash);
     border: 1px solid var(--line);
     border-radius: 0;
-    padding: 18px;
+    padding: 20px;
+    backdrop-filter: blur(14px);
+    color: var(--ink);
   }
   #panel h2 {
-    margin: 0 0 4px;
-    font-family: "IBM Plex Sans", sans-serif;
-    font-size: 13px;
+    margin: 0 0 6px;
+    font-family: var(--font-ui);
+    font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
   }
   #panel .hint {
-    margin: 0 0 16px;
+    margin: 0 0 18px;
     font-size: 12px;
     color: var(--muted);
-    line-height: 1.4;
+    line-height: 1.45;
     font-weight: 400;
   }
   .step { margin-bottom: 16px; }
   .step-label {
     display: block;
     font-size: 10px;
-    font-weight: 600;
-    letter-spacing: .08em;
+    font-weight: 500;
+    letter-spacing: .12em;
     text-transform: uppercase;
     color: var(--muted);
     margin-bottom: 8px;
@@ -121,33 +138,38 @@
     margin: 8px 0 0;
     font-size: 12px;
     color: var(--muted);
-    line-height: 1.35;
+    line-height: 1.4;
   }
   .step-note.ready { color: var(--ink); font-weight: 500; }
   .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
     border: 1px solid var(--line);
-    background: #fff;
-    color: var(--ink);
+    background: rgba(255, 255, 255, 0.06);
+    color: #ffffff;
     border-radius: 0;
-    padding: 9px 14px;
-    font: inherit;
+    padding: 10px 14px;
+    font-family: var(--font-ui);
     font-size: 12px;
     font-weight: 500;
+    letter-spacing: 0.01em;
     cursor: pointer;
-    transition: background .15s ease, border-color .15s ease;
+    transition: background .2s ease, border-color .2s ease, color .2s ease;
   }
-  .btn:hover { background: #f7f7f7; border-color: rgba(0,0,0,.18); }
-  .btn:active { background: #f0f0f0; }
+  .btn:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(122, 176, 240, 0.5); }
+  .btn:active { background: rgba(255, 255, 255, 0.16); }
   .btn.primary {
-    background: var(--ink);
-    color: #fff;
-    border-color: var(--ink);
+    background: #ffffff;
+    color: #0b0e14;
+    border-color: #ffffff;
     width: 100%;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 600;
   }
-  .btn.primary:hover { background: #333; }
+  .btn.primary:hover { background: #dce6f4; border-color: #dce6f4; color: #0b0e14; }
   .btn.primary:disabled {
-    opacity: .3; cursor: not-allowed;
+    opacity: .28; cursor: not-allowed;
   }
   .btn.ghost {
     background: transparent;
@@ -155,20 +177,22 @@
     color: var(--muted);
     padding-left: 0;
     padding-right: 12px;
+    font-size: 11px;
+    letter-spacing: 0.04em;
   }
-  .btn.ghost:hover { color: var(--ink); background: transparent; }
+  .btn.ghost:hover { color: var(--accent); background: transparent; }
   .btn.block { width: 100%; }
   #fileInput { display: none; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; }
-  .actions.tight { margin-top: 12px; margin-bottom: 0; }
+  .actions.tight { margin-top: 14px; margin-bottom: 0; }
   .status {
     min-height: 32px;
     font-size: 12px;
-    line-height: 1.45;
+    line-height: 1.5;
     color: var(--muted);
-    padding: 12px 0 0;
+    padding: 14px 0 0;
     border-top: 1px solid var(--line);
-    margin-top: 14px;
+    margin-top: 16px;
   }
   .status strong { color: var(--ink); font-weight: 600; }
   .swatch {
@@ -176,76 +200,149 @@
     vertical-align: 0; margin-right: 5px;
   }
 
-  /* Intensity is the only colorful UI chrome */
   #legend {
     position: absolute; left: 24px; bottom: 24px; z-index: 800;
     width: min(260px, calc(100vw - 48px));
     background: var(--wash);
     border: 1px solid var(--line);
     border-radius: 0;
-    padding: 12px 14px;
+    padding: 14px 16px;
+    backdrop-filter: blur(12px);
   }
   #legend .scale-title {
+    font-family: var(--font-ui);
     font-size: 10px;
     font-weight: 600;
-    letter-spacing: .08em;
+    letter-spacing: .14em;
     text-transform: uppercase;
     color: var(--muted);
-    margin-bottom: 8px;
+    margin-bottom: 10px;
   }
   #legend .scale-bar {
-    height: 8px;
+    height: 6px;
     border-radius: 0;
     background: linear-gradient(
       90deg,
-      #ffe566 0%,
-      #ffd466 18%,
-      #ffaa32 38%,
-      #ff6e1e 62%,
-      #e03228 82%,
-      #c81414 100%
+      #7ad4ff 0%,
+      #3aa0ff 20%,
+      #4a6aff 40%,
+      #7a3dff 60%,
+      #9b20e8 80%,
+      #5a00a8 100%
     );
   }
   #legend .scale-labels {
     display: flex;
     justify-content: space-between;
-    margin-top: 7px;
+    margin-top: 8px;
     font-size: 11px;
+    font-weight: 400;
     color: var(--muted);
   }
-  #legend .scale-labels span:last-child { color: #c62828; font-weight: 600; }
+  #legend .scale-labels span:last-child { color: #d080ff; font-weight: 600; }
+
+  #legend .filters {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--muted);
+    transition: color .15s ease;
+  }
+  .check:hover { color: var(--ink); }
+  .check input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+  }
+  .check .box {
+    position: relative;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.04);
+    transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+  }
+  .check .box::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 5px;
+    height: 9px;
+    border: solid #0b0e14;
+    border-width: 0 1.5px 1.5px 0;
+    transform: scale(0) rotate(45deg);
+    transition: transform .12s ease;
+  }
+  .check input:checked + .box {
+    background: var(--swatch, var(--accent));
+    border-color: var(--swatch, var(--accent));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--swatch, var(--accent)) 22%, transparent);
+  }
+  .check input:checked + .box::after {
+    transform: scale(1) rotate(45deg);
+  }
+  .check input:focus-visible + .box {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .check input:checked ~ .check-text { color: var(--ink); }
+  .check[data-band="quiet"] { --swatch: #7ad4ff; }
+  .check[data-band="street"] { --swatch: #5a6aff; }
+  .check[data-band="alert"] { --swatch: #9b20e8; }
 
   #spotCount {
     position: absolute; right: 24px; bottom: 24px; z-index: 800;
     background: var(--wash);
     border: 1px solid var(--line);
     border-radius: 0;
-    padding: 8px 12px;
-    font-size: 11px;
+    padding: 9px 14px;
+    font-family: var(--font-ui);
+    font-size: 10px;
     font-weight: 500;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--muted);
+    backdrop-filter: blur(12px);
   }
   #spotCount #countVal { color: var(--ink); font-weight: 600; }
 
   .pin-pulse {
     width: 12px; height: 12px; border-radius: 50%;
-    background: #111;
+    background: var(--accent);
     border: 2px solid #fff;
-    box-shadow: 0 0 0 4px rgba(0,0,0,.08);
+    box-shadow: 0 0 0 4px rgba(106, 138, 212, 0.2);
   }
 
   @media (max-width: 720px) {
-    #brand { top: 14px; left: 48px; }
-    #brand p { font-size: 14px; }
+    #brand { top: 14px; left: 52px; }
+    #brand h1 { font-size: clamp(28px, 8vw, 40px); }
+    #brand p { font-size: 14px; margin-top: 10px; }
     #panel {
       top: auto; bottom: 0; right: 0; left: 0;
       width: 100%;
       max-height: 46vh; overflow: auto;
       border-left: none; border-right: none; border-bottom: none;
+      backdrop-filter: blur(16px);
     }
-    #legend { left: 14px; bottom: auto; top: 88px; width: min(180px, calc(100vw - 100px)); }
+    #legend { left: 14px; bottom: auto; top: 92px; width: min(180px, calc(100vw - 100px)); }
     #spotCount { bottom: auto; top: 14px; right: 14px; }
   }
 </style>
@@ -298,6 +395,23 @@
       <span>Street</span>
       <span>Alert</span>
     </div>
+    <div class="filters" role="group" aria-label="Noise layers">
+      <label class="check" data-band="quiet">
+        <input type="checkbox" id="filterQuiet" name="noise-filter" value="quiet">
+        <span class="box" aria-hidden="true"></span>
+        <span class="check-text">Quiet noise</span>
+      </label>
+      <label class="check" data-band="street">
+        <input type="checkbox" id="filterStreet" name="noise-filter" value="street">
+        <span class="box" aria-hidden="true"></span>
+        <span class="check-text">Street noise</span>
+      </label>
+      <label class="check" data-band="alert">
+        <input type="checkbox" id="filterAlert" name="noise-filter" value="alert" checked>
+        <span class="box" aria-hidden="true"></span>
+        <span class="check-text">Alert noise</span>
+      </label>
+    </div>
   </div>
 
   <div id="spotCount"><span id="countVal">0</span> sounds</div>
@@ -311,11 +425,19 @@
     // Island only — Battery → Inwood, Hudson → East River
     bounds: L.latLngBounds([40.698, -74.022], [40.878, -73.906]),
   };
-  const RADIUS_M = 2.5; // personal field recordings
-  const RADIUS_311_M = 1.8; // denser 311 washes
+  const RADIUS_M = 2.8; // personal field recordings
+  const RADIUS_311_M = 2.0; // denser 311 washes
   const MIN_RADIUS_PX = 5;
-  /** Below this on-screen size, draw a soft radial dot instead of full Hobbs watercolor */
-  const SIMPLE_SPOT_PX = 12;
+  /** Intensity bands matching the legend */
+  const NOISE_BANDS = {
+    quiet: [0, 0.35],
+    street: [0.35, 0.65],
+    alert: [0.65, 1.01],
+  };
+  /** Alert on by default; quiet & street off */
+  const noiseFilter = { quiet: false, street: false, alert: true };
+  /** Below this on-screen size, draw lite watercolor instead of full Hobbs */
+  const SIMPLE_SPOT_PX = 18;
   /** Cap how many 311 complaints we paint at low zoom (stable subset) */
   const LOD_311 = [
     { z: 13, max: 1500 },
@@ -330,9 +452,15 @@
   const WC_BASE_DEPTH = 4;
   const WC_LAYER_DEPTH = 2;
   const WC_LAYERS = 32;
-  const WC_LAYER_ALPHA = 0.04;
+  const WC_LAYER_ALPHA = 0.11;
+  // Lightweight watercolor for city-zoom dots (organic edges, still cheap)
+  const WC_LITE_SIDES = 6;
+  const WC_LITE_BASE_DEPTH = 3;
+  const WC_LITE_LAYER_DEPTH = 1;
+  const WC_LITE_LAYERS = 16;
+  const WC_LITE_ALPHA = 0.12;
 
-  // 311 color families: street = yellow/orange, vehicle = orange, helicopter = red
+  // 311 color families: street = red, vehicle = magenta, helicopter = dark purple
   const INTENSITY_311_TYPE = {
     "Noise - Street/Sidewalk": 0.36,
     "Noise - Vehicle": 0.58,
@@ -350,9 +478,9 @@
     NYPD: 0.04,
   };
   const INTENSITY_311_BAND = {
-    "Noise - Street/Sidewalk": [0.22, 0.52], // yellow → orange
-    "Noise - Vehicle": [0.48, 0.72], // orange
-    "Noise - Helicopter": [0.86, 1.0], // red
+    "Noise - Street/Sidewalk": [0.22, 0.52], // bright red → magenta
+    "Noise - Vehicle": [0.48, 0.72], // magenta → purple
+    "Noise - Helicopter": [0.86, 1.0], // dark purple
   };
 
   // Loudness / harshness bands (plus legacy class labels from older paints)
@@ -376,14 +504,14 @@
     siren: 0.65,
   };
 
-  // Quiet → street → alert — stronger mid tones so a single spot reads on white
+  // Quiet → street → alert — electric blue → indigo → deep violet
   const INTENSITY_STOPS = [
-    { t: 0.0, c: [255, 236, 150] },
-    { t: 0.22, c: [255, 214, 100] },
-    { t: 0.45, c: [255, 170, 50] },
-    { t: 0.65, c: [255, 110, 30] },
-    { t: 0.82, c: [230, 50, 40] },
-    { t: 1.0, c: [200, 20, 20] },
+    { t: 0.0, c: [122, 212, 255] },
+    { t: 0.2, c: [58, 160, 255] },
+    { t: 0.4, c: [74, 106, 255] },
+    { t: 0.6, c: [122, 61, 255] },
+    { t: 0.8, c: [155, 32, 232] },
+    { t: 1.0, c: [90, 0, 168] },
   ];
 
   const map = L.map("map", {
@@ -398,7 +526,7 @@
     if (basemapLayer) map.removeLayer(basemapLayer);
     const keyQ = cartoKey ? `?key=${encodeURIComponent(cartoKey)}` : "";
     basemapLayer = L.tileLayer(
-      `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png${keyQ}`,
+      `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png${keyQ}`,
       {
         attribution:
           '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
@@ -915,10 +1043,12 @@
   // Unit-space layer polygons cached per seed (static; redrawn at any zoom)
   /** @type {Map<number, {poly:{x:number,y:number}[], wash:boolean}[]>} */
   const layerCache = new Map();
+  /** @type {Map<number, {poly:{x:number,y:number}[], wash:boolean}[]>} */
+  const liteLayerCache = new Map();
   /** Pre-rendered spot sprites keyed by look + size — reused across frames */
   /** @type {Map<string, {canvas:HTMLCanvasElement, pad:number, size:number}>} */
   const spotSpriteCache = new Map();
-  const SPOT_SPRITE_CACHE_MAX = 400;
+  const SPOT_SPRITE_CACHE_MAX = 900;
 
   function getWatercolorLayers(seed) {
     if (layerCache.has(seed)) return layerCache.get(seed);
@@ -944,6 +1074,29 @@
     return layers;
   }
 
+  function getLiteWatercolorLayers(seed) {
+    if (liteLayerCache.has(seed)) return liteLayerCache.get(seed);
+
+    const rndBase = mulberry32(seed ^ 0x27d4eb2d);
+    let base = makeRegularPoly(WC_LITE_SIDES, 1, rndBase);
+    base = deform(base, rndBase, WC_LITE_BASE_DEPTH, 0.62);
+
+    const rndLayer = mulberry32(seed ^ 0x165667b1);
+    const layers = [];
+    for (let i = 0; i < WC_LITE_LAYERS; i++) {
+      const wash = i % 3 === 2;
+      const poly = deform(
+        base.map((p) => ({ x: p.x, y: p.y, v: p.v })),
+        rndLayer,
+        WC_LITE_LAYER_DEPTH,
+        0.38
+      ).map((p) => ({ x: p.x, y: p.y }));
+      layers.push({ poly, wash });
+    }
+    liteLayerCache.set(seed, layers);
+    return layers;
+  }
+
   function fillPoly(target, poly, cx, cy, scale) {
     target.beginPath();
     for (let i = 0; i < poly.length; i++) {
@@ -960,63 +1113,108 @@
     const layers = getWatercolorLayers(seed);
     const pigment = rgb;
     const washRgb = [
-      Math.round(pigment[0] + (255 - pigment[0]) * 0.62),
-      Math.round(pigment[1] + (255 - pigment[1]) * 0.62),
-      Math.round(pigment[2] + (255 - pigment[2]) * 0.62),
+      Math.round(pigment[0] + (255 - pigment[0]) * 0.55),
+      Math.round(pigment[1] + (255 - pigment[1]) * 0.55),
+      Math.round(pigment[2] + (255 - pigment[2]) * 0.55),
     ];
-    const alphaScale = 0.75 + intensity * 0.55;
+    const alphaScale = 0.85 + intensity * 0.55;
 
-    // Soft white-tinted bloom under the stack (diffuse fade)
-    const halo = target.createRadialGradient(cx, cy, rPx * 0.15, cx, cy, rPx * 2.2);
-    halo.addColorStop(0, `rgba(${pigment[0]},${pigment[1]},${pigment[2]},${0.1 * alphaScale})`);
-    halo.addColorStop(0.45, `rgba(${washRgb[0]},${washRgb[1]},${washRgb[2]},${0.06 * alphaScale})`);
+    // Wet under-bloom
+    const halo = target.createRadialGradient(cx, cy, rPx * 0.1, cx, cy, rPx * 2.1);
+    halo.addColorStop(0, `rgba(${pigment[0]},${pigment[1]},${pigment[2]},${0.16 * alphaScale})`);
+    halo.addColorStop(0.4, `rgba(${washRgb[0]},${washRgb[1]},${washRgb[2]},${0.1 * alphaScale})`);
     halo.addColorStop(1, "rgba(255,255,255,0)");
     target.fillStyle = halo;
     target.beginPath();
-    target.arc(cx, cy, rPx * 2.2, 0, Math.PI * 2);
+    target.arc(cx, cy, rPx * 2.1, 0, Math.PI * 2);
     target.fill();
 
     for (const layer of layers) {
       const [r, g, b] = layer.wash ? washRgb : pigment;
       const a = WC_LAYER_ALPHA * alphaScale * (layer.wash ? 0.55 : 1);
       target.fillStyle = `rgba(${r},${g},${b},${a})`;
-      fillPoly(target, layer.poly, cx, cy, rPx);
+      fillPoly(target, layer.poly, cx, cy, rPx * (0.92 + (layer.wash ? 0.12 : 0)));
     }
 
     // Light texture masking: punched micro-circles (Hobbs), seed-stable
     const rndTex = mulberry32(seed ^ 0xc2b2ae35);
     target.save();
     target.globalCompositeOperation = "destination-out";
-    const holes = 18 + Math.floor(rndTex() * 22);
+    const holes = 22 + Math.floor(rndTex() * 26);
     for (let i = 0; i < holes; i++) {
       const ang = rndTex() * Math.PI * 2;
-      const d = Math.sqrt(rndTex()) * rPx * 0.95;
-      const len = (0.04 + Math.abs(gauss(rndTex)) * 0.06) * rPx;
+      const d = Math.sqrt(rndTex()) * rPx * 1.05;
+      const len = (0.05 + Math.abs(gauss(rndTex)) * 0.08) * rPx;
       target.beginPath();
       target.arc(cx + Math.cos(ang) * d, cy + Math.sin(ang) * d, Math.max(0.4, len), 0, Math.PI * 2);
-      target.fillStyle = `rgba(0,0,0,${0.08 + rndTex() * 0.2})`;
+      target.fillStyle = `rgba(0,0,0,${0.1 + rndTex() * 0.22})`;
       target.fill();
     }
     target.restore();
   }
 
-  /** Soft radial wash — same visual read as watercolor at ~4–12 px */
-  function drawSimpleSpot(target, cx, cy, rPx, rgb, intensity) {
-    const alphaScale = 0.75 + intensity * 0.55;
+  /** Lite watercolor for small spots — irregular edges + wet bloom, still cheap */
+  function drawSimpleSpot(target, cx, cy, rPx, rgb, seed, intensity) {
+    const layers = getLiteWatercolorLayers(seed);
+    const rnd = mulberry32(seed ^ 0x9e3779b9);
+    const pigment = rgb;
     const washRgb = [
-      Math.round(rgb[0] + (255 - rgb[0]) * 0.55),
-      Math.round(rgb[1] + (255 - rgb[1]) * 0.55),
-      Math.round(rgb[2] + (255 - rgb[2]) * 0.55),
+      Math.round(pigment[0] + (255 - pigment[0]) * 0.35),
+      Math.round(pigment[1] + (255 - pigment[1]) * 0.35),
+      Math.round(pigment[2] + (255 - pigment[2]) * 0.35),
     ];
-    const grad = target.createRadialGradient(cx, cy, 0, cx, cy, rPx * 2.1);
-    grad.addColorStop(0, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${0.55 * alphaScale})`);
-    grad.addColorStop(0.35, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${0.28 * alphaScale})`);
-    grad.addColorStop(0.7, `rgba(${washRgb[0]},${washRgb[1]},${washRgb[2]},${0.12 * alphaScale})`);
-    grad.addColorStop(1, "rgba(255,255,255,0)");
-    target.fillStyle = grad;
+    const alphaScale = 1.0 + intensity * 0.45;
+
+    // Diffuse wet pool under the blot
+    const pool = target.createRadialGradient(cx, cy, 0, cx, cy, rPx * 2.6);
+    pool.addColorStop(0, `rgba(${pigment[0]},${pigment[1]},${pigment[2]},${0.38 * alphaScale})`);
+    pool.addColorStop(0.4, `rgba(${washRgb[0]},${washRgb[1]},${washRgb[2]},${0.2 * alphaScale})`);
+    pool.addColorStop(1, "rgba(255,255,255,0)");
+    target.fillStyle = pool;
     target.beginPath();
-    target.arc(cx, cy, rPx * 2.1, 0, Math.PI * 2);
+    target.arc(cx, cy, rPx * 2.6, 0, Math.PI * 2);
     target.fill();
+
+    // Soft pigment blooms with seed jitter (wet-on-wet)
+    const blooms = 6 + Math.floor(rnd() * 4);
+    for (let i = 0; i < blooms; i++) {
+      const ox = (rnd() - 0.5) * rPx * 1.1;
+      const oy = (rnd() - 0.5) * rPx * 1.1;
+      const rr = rPx * (0.7 + rnd() * 0.95);
+      const [r, g, b] = i % 2 === 0 ? pigment : washRgb;
+      const g2 = target.createRadialGradient(cx + ox, cy + oy, 0, cx + ox, cy + oy, rr);
+      g2.addColorStop(0, `rgba(${r},${g},${b},${Math.min(1, (0.48 + rnd() * 0.28) * alphaScale)})`);
+      g2.addColorStop(0.5, `rgba(${r},${g},${b},${0.2 * alphaScale})`);
+      g2.addColorStop(1, "rgba(255,255,255,0)");
+      target.fillStyle = g2;
+      target.beginPath();
+      target.ellipse(cx + ox, cy + oy, rr * (0.9 + rnd() * 0.45), rr * (0.7 + rnd() * 0.5), rnd() * Math.PI, 0, Math.PI * 2);
+      target.fill();
+    }
+
+    // Irregular watercolor silhouette
+    for (const layer of layers) {
+      const [r, g, b] = layer.wash ? washRgb : pigment;
+      const a = WC_LITE_ALPHA * alphaScale * (layer.wash ? 0.45 : 1);
+      target.fillStyle = `rgba(${r},${g},${b},${a})`;
+      fillPoly(target, layer.poly, cx, cy, rPx * (1.05 + (layer.wash ? 0.35 : 0.1)));
+    }
+
+    // Edge granulation / dry-brush bites
+    const rndTex = mulberry32(seed ^ 0xc2b2ae35);
+    target.save();
+    target.globalCompositeOperation = "destination-out";
+    const holes = 16 + Math.floor(rndTex() * 18);
+    for (let i = 0; i < holes; i++) {
+      const ang = rndTex() * Math.PI * 2;
+      const d = Math.sqrt(rndTex()) * rPx * 1.35;
+      const len = (0.08 + Math.abs(gauss(rndTex)) * 0.12) * rPx;
+      target.beginPath();
+      target.arc(cx + Math.cos(ang) * d, cy + Math.sin(ang) * d, Math.max(0.4, len), 0, Math.PI * 2);
+      target.fillStyle = `rgba(0,0,0,${0.14 + rndTex() * 0.28})`;
+      target.fill();
+    }
+    target.restore();
   }
 
   function rememberSprite(key, sprite) {
@@ -1029,25 +1227,25 @@
 
   function getSpotSprite(s, rPx, rgb, intensity, preferFull) {
     const rKey = Math.round(rPx * 2) / 2;
+    const seed = spotSeed(s);
     // Full Hobbs for personal recordings (few) or when the spot is large enough to read detail
     const simple = !preferFull && rPx < SIMPLE_SPOT_PX;
-    // Simple dots share sprites by color+size; full watercolor is per-seed+size
     const key = simple
-      ? `s:${rgb[0]},${rgb[1]},${rgb[2]}:${Math.round(intensity * 50)}:${rKey}`
-      : `h:${spotSeed(s)}:${Math.round(intensity * 50)}:${rKey}`;
+      ? `lite:${seed}:${Math.round(intensity * 50)}:${rKey}`
+      : `h:${seed}:${Math.round(intensity * 50)}:${rKey}`;
 
     const hit = spotSpriteCache.get(key);
     if (hit) return hit;
 
-    const pad = Math.ceil(rPx * 2.6 + 8);
+    const pad = Math.ceil(rPx * 3.0 + 10);
     const size = pad * 2;
     const layer = document.createElement("canvas");
     layer.width = Math.ceil(size * dpr);
     layer.height = Math.ceil(size * dpr);
     const lctx = layer.getContext("2d");
     lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (simple) drawSimpleSpot(lctx, pad, pad, rPx, rgb, intensity);
-    else drawHobbsSpot(lctx, pad, pad, rPx, rgb, spotSeed(s), intensity);
+    if (simple) drawSimpleSpot(lctx, pad, pad, rPx, rgb, seed, intensity);
+    else drawHobbsSpot(lctx, pad, pad, rPx, rgb, seed, intensity);
 
     const sprite = { canvas: layer, pad, size };
     rememberSprite(key, sprite);
@@ -1061,8 +1259,16 @@
     const rgb = intensityToRgb(t);
     const sprite = getSpotSprite(s, rPx, rgb, t, preferFull);
 
-    ctx.globalAlpha = 0.95 * alphaMul;
-    ctx.drawImage(sprite.canvas, pt.x - sprite.pad, pt.y - sprite.pad, sprite.size, sprite.size);
+    const dx = pt.x - sprite.pad;
+    const dy = pt.y - sprite.pad;
+    ctx.globalAlpha = Math.min(1, 1.1 * alphaMul);
+    ctx.drawImage(sprite.canvas, dx, dy, sprite.size, sprite.size);
+    // Extra wet bloom (scaled redraw — no per-spot canvas filter)
+    const bloom = 1.65;
+    const bw = sprite.size * bloom;
+    const bh = sprite.size * bloom;
+    ctx.globalAlpha = 0.38 * alphaMul;
+    ctx.drawImage(sprite.canvas, pt.x - bw / 2, pt.y - bh / 2, bw, bh);
     ctx.globalAlpha = 1;
   }
 
@@ -1082,7 +1288,46 @@
     return out;
   }
 
+  /** Anchor so we can slide the canvas with the map mid-pan (no full redraw) */
+  let paintAnchorLatLng = null;
+  let paintAnchorPoint = null;
+  let paintZoom = null;
+
+  function resetWatercolorTransform() {
+    canvas.style.transform = "";
+  }
+
+  function syncWatercolorTransform() {
+    if (!paintAnchorLatLng || paintZoom == null || !paintAnchorPoint) return;
+    const z = map.getZoom();
+    const pt = map.latLngToContainerPoint(paintAnchorLatLng);
+    const dx = pt.x - paintAnchorPoint.x;
+    const dy = pt.y - paintAnchorPoint.y;
+    if (z === paintZoom) {
+      canvas.style.transform = `translate(${dx}px, ${dy}px)`;
+      return;
+    }
+    // Mid-zoom: translate + scale around the painted anchor
+    const scale = Math.pow(2, z - paintZoom);
+    canvas.style.transform = `translate(${dx}px, ${dy}px) scale(${scale})`;
+    canvas.style.transformOrigin = `${paintAnchorPoint.x}px ${paintAnchorPoint.y}px`;
+  }
+
+  function noiseBand(intensity) {
+    const t = Math.max(0, Math.min(1, intensity));
+    if (t < NOISE_BANDS.street[0]) return "quiet";
+    if (t < NOISE_BANDS.alert[0]) return "street";
+    return "alert";
+  }
+
+  function passesNoiseFilter(s) {
+    return !!noiseFilter[noiseBand(spotIntensity(s))];
+  }
+
   function paintWatercolor() {
+    resetWatercolorTransform();
+    canvas.style.transformOrigin = "0 0";
+
     const w = window.innerWidth;
     const h = window.innerHeight;
     ctx.clearRect(0, 0, w, h);
@@ -1093,14 +1338,37 @@
     // 311 underpaint first (slightly softer), personal recordings on top
     const layer311 = complaintsForZoom();
     for (const s of layer311) {
-      if (inView(s)) paintBlob(s, RADIUS_311_M, 0.72, false);
+      if (inView(s) && passesNoiseFilter(s)) paintBlob(s, RADIUS_311_M, 1, false);
     }
     for (const s of spots) {
-      if (inView(s)) paintBlob(s, RADIUS_M, 1, true);
+      if (inView(s) && passesNoiseFilter(s)) paintBlob(s, RADIUS_M, 1, true);
     }
+
+    paintAnchorLatLng = map.getCenter();
+    paintAnchorPoint = map.latLngToContainerPoint(paintAnchorLatLng);
+    paintZoom = map.getZoom();
   }
 
-  // Paint after interaction ends — mid-pan redraws freeze the tab with thousands of spots
+  function bindNoiseFilter(id, key) {
+    const el = document.getElementById(id);
+    el.checked = noiseFilter[key];
+    el.addEventListener("change", () => {
+      noiseFilter[key] = el.checked;
+      // Keep at least one layer visible
+      if (!noiseFilter.quiet && !noiseFilter.street && !noiseFilter.alert) {
+        el.checked = true;
+        noiseFilter[key] = true;
+        return;
+      }
+      schedulePaint();
+    });
+  }
+  bindNoiseFilter("filterQuiet", "quiet");
+  bindNoiseFilter("filterStreet", "street");
+  bindNoiseFilter("filterAlert", "alert");
+
+  // Follow the map live via CSS transform; full redraw only when movement settles
+  map.on("move zoom", () => syncWatercolorTransform());
   map.on("moveend zoomend", () => schedulePaint());
   map.on("resize", () => schedulePaint());
   window.addEventListener("resize", resizeCanvas);
@@ -1249,7 +1517,7 @@
     ex.drawImage(canvas, 0, 0);
     ex.setTransform(dpr, 0, 0, dpr, 0, 0);
     ex.fillStyle = "rgba(17,17,17,.9)";
-    ex.font = "600 28px 'Cormorant Garamond', Georgia, serif";
+    ex.font = "600 28px 'Space Grotesk', system-ui, sans-serif";
     ex.fillText("Silence in NYC", 24, 40);
     const a = document.createElement("a");
     a.download = "silence-in-nyc.png";
@@ -1341,11 +1609,7 @@
       spots = serverSpots;
       cacheSpotsLocally();
       paintWatercolor();
-      setStatus(
-        spots.length
-          ? `<strong>${spots.length}</strong> sound${spots.length > 1 ? "s" : ""} loaded — every paint saves automatically.`
-          : "Walk the city. Share your position, record, paint — it saves automatically."
-      );
+      setStatus("Walk the city. Share your position, record, paint.");
     } catch (_) {
       // Offline fallback — still try the 311 snapshot
       try {
