@@ -55,6 +55,8 @@
     z-index: 450;
     /* normal: pale yellows/oranges stay visible on the white map */
     mix-blend-mode: normal;
+    /* one soft blur for the whole layer — avoid per-spot canvas filters */
+    filter: blur(1.2px);
   }
 
   #brand {
@@ -312,6 +314,14 @@
   const RADIUS_M = 2.5; // personal field recordings
   const RADIUS_311_M = 1.8; // denser 311 washes
   const MIN_RADIUS_PX = 5;
+  /** Below this on-screen size, draw a soft radial dot instead of full Hobbs watercolor */
+  const SIMPLE_SPOT_PX = 12;
+  /** Cap how many 311 complaints we paint at low zoom (stable subset) */
+  const LOD_311 = [
+    { z: 13, max: 1500 },
+    { z: 14, max: 3500 },
+    { z: 15, max: Infinity },
+  ];
   const STORAGE_KEY = "fresque-sonore-spots-v4";
 
   // Tyler Hobbs watercolor: stacked low-opacity deformed polygons
@@ -905,6 +915,10 @@
   // Unit-space layer polygons cached per seed (static; redrawn at any zoom)
   /** @type {Map<number, {poly:{x:number,y:number}[], wash:boolean}[]>} */
   const layerCache = new Map();
+  /** Pre-rendered spot sprites keyed by look + size — reused across frames */
+  /** @type {Map<string, {canvas:HTMLCanvasElement, pad:number, size:number}>} */
+  const spotSpriteCache = new Map();
+  const SPOT_SPRITE_CACHE_MAX = 400;
 
   function getWatercolorLayers(seed) {
     if (layerCache.has(seed)) return layerCache.get(seed);
@@ -986,31 +1000,86 @@
     target.restore();
   }
 
-  function paintBlob(s, radiusM, alphaMul) {
-    const pt = map.latLngToContainerPoint([s.lat, s.lng]);
-    const rPx = Math.max(MIN_RADIUS_PX * 0.85, metersToPixels(radiusM, s.lat));
+  /** Soft radial wash — same visual read as watercolor at ~4–12 px */
+  function drawSimpleSpot(target, cx, cy, rPx, rgb, intensity) {
+    const alphaScale = 0.75 + intensity * 0.55;
+    const washRgb = [
+      Math.round(rgb[0] + (255 - rgb[0]) * 0.55),
+      Math.round(rgb[1] + (255 - rgb[1]) * 0.55),
+      Math.round(rgb[2] + (255 - rgb[2]) * 0.55),
+    ];
+    const grad = target.createRadialGradient(cx, cy, 0, cx, cy, rPx * 2.1);
+    grad.addColorStop(0, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${0.55 * alphaScale})`);
+    grad.addColorStop(0.35, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${0.28 * alphaScale})`);
+    grad.addColorStop(0.7, `rgba(${washRgb[0]},${washRgb[1]},${washRgb[2]},${0.12 * alphaScale})`);
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    target.fillStyle = grad;
+    target.beginPath();
+    target.arc(cx, cy, rPx * 2.1, 0, Math.PI * 2);
+    target.fill();
+  }
+
+  function rememberSprite(key, sprite) {
+    if (spotSpriteCache.size >= SPOT_SPRITE_CACHE_MAX) {
+      const oldest = spotSpriteCache.keys().next().value;
+      spotSpriteCache.delete(oldest);
+    }
+    spotSpriteCache.set(key, sprite);
+  }
+
+  function getSpotSprite(s, rPx, rgb, intensity, preferFull) {
+    const rKey = Math.round(rPx * 2) / 2;
+    // Full Hobbs for personal recordings (few) or when the spot is large enough to read detail
+    const simple = !preferFull && rPx < SIMPLE_SPOT_PX;
+    // Simple dots share sprites by color+size; full watercolor is per-seed+size
+    const key = simple
+      ? `s:${rgb[0]},${rgb[1]},${rgb[2]}:${Math.round(intensity * 50)}:${rKey}`
+      : `h:${spotSeed(s)}:${Math.round(intensity * 50)}:${rKey}`;
+
+    const hit = spotSpriteCache.get(key);
+    if (hit) return hit;
+
     const pad = Math.ceil(rPx * 2.6 + 8);
     const size = pad * 2;
-    const t = spotIntensity(s);
-    const rgb = intensityToRgb(t);
-
     const layer = document.createElement("canvas");
     layer.width = Math.ceil(size * dpr);
     layer.height = Math.ceil(size * dpr);
     const lctx = layer.getContext("2d");
     lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawHobbsSpot(lctx, pad, pad, rPx, rgb, spotSeed(s), t);
+    if (simple) drawSimpleSpot(lctx, pad, pad, rPx, rgb, intensity);
+    else drawHobbsSpot(lctx, pad, pad, rPx, rgb, spotSeed(s), intensity);
 
-    const dx = pt.x - pad;
-    const dy = pt.y - pad;
-    ctx.save();
-    ctx.filter = "blur(0.6px)";
+    const sprite = { canvas: layer, pad, size };
+    rememberSprite(key, sprite);
+    return sprite;
+  }
+
+  function paintBlob(s, radiusM, alphaMul, preferFull) {
+    const pt = map.latLngToContainerPoint([s.lat, s.lng]);
+    const rPx = Math.max(MIN_RADIUS_PX * 0.85, metersToPixels(radiusM, s.lat));
+    const t = spotIntensity(s);
+    const rgb = intensityToRgb(t);
+    const sprite = getSpotSprite(s, rPx, rgb, t, preferFull);
+
     ctx.globalAlpha = 0.95 * alphaMul;
-    ctx.drawImage(layer, dx, dy, size, size);
-    ctx.filter = "blur(7px)";
-    ctx.globalAlpha = 0.25 * alphaMul;
-    ctx.drawImage(layer, dx, dy, size, size);
-    ctx.restore();
+    ctx.drawImage(sprite.canvas, pt.x - sprite.pad, pt.y - sprite.pad, sprite.size, sprite.size);
+    ctx.globalAlpha = 1;
+  }
+
+  /** Stable subset so LOD changes don't flicker which complaints appear */
+  function complaintsForZoom() {
+    const z = map.getZoom();
+    let max = LOD_311[0].max;
+    for (const tier of LOD_311) {
+      if (z >= tier.z) max = tier.max;
+    }
+    if (!Number.isFinite(max) || complaints311.length <= max) return complaints311;
+    const out = [];
+    const step = complaints311.length / max;
+    for (let i = 0; i < max; i++) {
+      out.push(complaints311[Math.floor(i * step)]);
+    }
+    return out;
   }
 
   function paintWatercolor() {
@@ -1022,17 +1091,18 @@
     const inView = (s) => bounds.contains([s.lat, s.lng]);
 
     // 311 underpaint first (slightly softer), personal recordings on top
-    if (complaints311.length) {
-      for (const s of complaints311) {
-        if (inView(s)) paintBlob(s, RADIUS_311_M, 0.72);
-      }
+    const layer311 = complaintsForZoom();
+    for (const s of layer311) {
+      if (inView(s)) paintBlob(s, RADIUS_311_M, 0.72, false);
     }
     for (const s of spots) {
-      if (inView(s)) paintBlob(s, RADIUS_M, 1);
+      if (inView(s)) paintBlob(s, RADIUS_M, 1, true);
     }
   }
 
-  map.on("move zoom resize", () => schedulePaint());
+  // Paint after interaction ends — mid-pan redraws freeze the tab with thousands of spots
+  map.on("moveend zoomend", () => schedulePaint());
+  map.on("resize", () => schedulePaint());
   window.addEventListener("resize", resizeCanvas);
 
   // Always: tap map to place
