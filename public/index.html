@@ -55,8 +55,8 @@
     z-index: 450;
     /* normal: pale yellows/oranges stay visible on the white map */
     mix-blend-mode: normal;
-    /* one soft blur for the whole layer — avoid per-spot canvas filters */
-    filter: blur(1.2px);
+    /* light soften only — bloom comes from a cheap scaled redraw, not per-spot filters */
+    filter: blur(0.5px);
   }
 
   #brand {
@@ -1000,22 +1000,24 @@
     target.restore();
   }
 
-  /** Soft radial wash — same visual read as watercolor at ~4–12 px */
+  /** Soft radial wash — matches the stacked Hobbs smudge at ~4–12 px */
   function drawSimpleSpot(target, cx, cy, rPx, rgb, intensity) {
     const alphaScale = 0.75 + intensity * 0.55;
     const washRgb = [
-      Math.round(rgb[0] + (255 - rgb[0]) * 0.55),
-      Math.round(rgb[1] + (255 - rgb[1]) * 0.55),
-      Math.round(rgb[2] + (255 - rgb[2]) * 0.55),
+      Math.round(rgb[0] + (255 - rgb[0]) * 0.35),
+      Math.round(rgb[1] + (255 - rgb[1]) * 0.35),
+      Math.round(rgb[2] + (255 - rgb[2]) * 0.35),
     ];
-    const grad = target.createRadialGradient(cx, cy, 0, cx, cy, rPx * 2.1);
-    grad.addColorStop(0, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${0.55 * alphaScale})`);
-    grad.addColorStop(0.35, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${0.28 * alphaScale})`);
-    grad.addColorStop(0.7, `rgba(${washRgb[0]},${washRgb[1]},${washRgb[2]},${0.12 * alphaScale})`);
+    const grad = target.createRadialGradient(cx, cy, 0, cx, cy, rPx * 2.2);
+    // Stronger core so city-zoom dots read as bright as the old 32-layer stack
+    grad.addColorStop(0, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${Math.min(1, 0.95 * alphaScale)})`);
+    grad.addColorStop(0.25, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${0.62 * alphaScale})`);
+    grad.addColorStop(0.55, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${0.32 * alphaScale})`);
+    grad.addColorStop(0.8, `rgba(${washRgb[0]},${washRgb[1]},${washRgb[2]},${0.14 * alphaScale})`);
     grad.addColorStop(1, "rgba(255,255,255,0)");
     target.fillStyle = grad;
     target.beginPath();
-    target.arc(cx, cy, rPx * 2.1, 0, Math.PI * 2);
+    target.arc(cx, cy, rPx * 2.2, 0, Math.PI * 2);
     target.fill();
   }
 
@@ -1061,8 +1063,17 @@
     const rgb = intensityToRgb(t);
     const sprite = getSpotSprite(s, rPx, rgb, t, preferFull);
 
+    const dx = pt.x - sprite.pad;
+    const dy = pt.y - sprite.pad;
+    // Main pigment (was blur 0.6px @ 0.95)
     ctx.globalAlpha = 0.95 * alphaMul;
-    ctx.drawImage(sprite.canvas, pt.x - sprite.pad, pt.y - sprite.pad, sprite.size, sprite.size);
+    ctx.drawImage(sprite.canvas, dx, dy, sprite.size, sprite.size);
+    // Soft bloom without canvas filters (was blur 7px @ 0.25)
+    const bloom = 1.4;
+    const bw = sprite.size * bloom;
+    const bh = sprite.size * bloom;
+    ctx.globalAlpha = 0.3 * alphaMul;
+    ctx.drawImage(sprite.canvas, pt.x - bw / 2, pt.y - bh / 2, bw, bh);
     ctx.globalAlpha = 1;
   }
 
@@ -1093,7 +1104,7 @@
     // 311 underpaint first (slightly softer), personal recordings on top
     const layer311 = complaintsForZoom();
     for (const s of layer311) {
-      if (inView(s)) paintBlob(s, RADIUS_311_M, 0.72, false);
+      if (inView(s)) paintBlob(s, RADIUS_311_M, 0.88, false);
     }
     for (const s of spots) {
       if (inView(s)) paintBlob(s, RADIUS_M, 1, true);
