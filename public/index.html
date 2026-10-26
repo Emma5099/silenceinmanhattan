@@ -324,6 +324,84 @@
   }
   #spotCount #countVal { color: var(--ink); font-weight: 600; }
 
+  #downloadModal {
+    position: absolute; inset: 0; z-index: 1200;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(6, 8, 12, 0.72);
+    backdrop-filter: blur(8px);
+  }
+  #downloadModal.open { display: flex; }
+  #downloadModal .modal-card {
+    width: min(340px, 100%);
+    background: rgba(18, 22, 32, 0.96);
+    border: 1px solid var(--line);
+    padding: 22px 22px 18px;
+    color: var(--ink);
+  }
+  #downloadModal h3 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+  }
+  #downloadModal .modal-hint {
+    margin: 8px 0 18px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+  #downloadModal .mode-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  #downloadModal .mode-btn {
+    width: 100%;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
+  }
+  #downloadModal .mode-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(122, 176, 240, 0.45);
+  }
+  #downloadModal .mode-btn strong {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  #downloadModal .mode-btn span {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 400;
+  }
+  #downloadModal .modal-cancel {
+    margin-top: 14px;
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    padding: 8px;
+  }
+  #downloadModal .modal-cancel:hover { color: var(--accent); }
+
   .pin-pulse {
     width: 12px; height: 12px; border-radius: 50%;
     background: var(--accent);
@@ -415,6 +493,28 @@
   </div>
 
   <div id="spotCount"><span id="countVal">0</span> sounds</div>
+
+  <div id="downloadModal" role="dialog" aria-modal="true" aria-labelledby="downloadModalTitle">
+    <div class="modal-card">
+      <h3 id="downloadModalTitle">Download PNG</h3>
+      <p class="modal-hint">Choose how the map should look in the export.</p>
+      <div class="mode-list">
+        <button class="mode-btn" type="button" data-mode="black">
+          <strong>Black mode</strong>
+          <span>Dark map tiles with watercolor</span>
+        </button>
+        <button class="mode-btn" type="button" data-mode="white">
+          <strong>White mode</strong>
+          <span>Light map tiles with watercolor</span>
+        </button>
+        <button class="mode-btn" type="button" data-mode="canvas">
+          <strong>Black canvas</strong>
+          <span>Solid black background, no streets</span>
+        </button>
+      </div>
+      <button class="modal-cancel" type="button" id="downloadCancel">Cancel</button>
+    </div>
+  </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -532,6 +632,7 @@
           '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
         subdomains: "abcd",
         maxZoom: 20,
+        crossOrigin: true,
       }
     ).addTo(map);
   }
@@ -1507,23 +1608,159 @@
     syncPaintEnabled();
   });
 
-  document.getElementById("btnSave").addEventListener("click", () => {
+  const downloadModal = document.getElementById("downloadModal");
+
+  function openDownloadModal() {
+    downloadModal.classList.add("open");
+  }
+  function closeDownloadModal() {
+    downloadModal.classList.remove("open");
+  }
+
+  function collectVisibleTiles() {
+    const mapEl = map.getContainer();
+    const mapRect = mapEl.getBoundingClientRect();
+    const imgs = mapEl.querySelectorAll(".leaflet-tile-pane img.leaflet-tile");
+    const tiles = [];
+    imgs.forEach((img) => {
+      if (!img.complete || img.naturalWidth === 0) return;
+      const r = img.getBoundingClientRect();
+      const w = r.width;
+      const h = r.height;
+      if (w < 1 || h < 1) return;
+      // Skip tiles fully outside the viewport
+      if (r.right < mapRect.left || r.left > mapRect.right || r.bottom < mapRect.top || r.top > mapRect.bottom) {
+        return;
+      }
+      tiles.push({
+        src: img.currentSrc || img.src,
+        x: r.left - mapRect.left,
+        y: r.top - mapRect.top,
+        w,
+        h,
+      });
+    });
+    return tiles;
+  }
+
+  function toLightTileUrl(src) {
+    return String(src)
+      .replace("/dark_all/", "/light_all/")
+      .replace("/dark_nolabels/", "/light_nolabels/")
+      .replace("/dark_only_labels/", "/light_only_labels/");
+  }
+
+  function loadImage(src) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
+  }
+
+  async function drawBasemapTiles(ex, mode) {
+    const tiles = collectVisibleTiles();
+    if (!tiles.length) return false;
+
+    let drawn = 0;
+    for (const tile of tiles) {
+      const src = mode === "white" ? toLightTileUrl(tile.src) : tile.src;
+      const img = await loadImage(src);
+      if (!img) continue;
+      try {
+        ex.drawImage(img, tile.x * dpr, tile.y * dpr, tile.w * dpr, tile.h * dpr);
+        drawn += 1;
+      } catch (_) {
+        // CORS-tainted or broken tile — skip
+      }
+    }
+    return drawn > 0;
+  }
+
+  async function downloadMapPng(mode) {
     const exportCanvas = document.createElement("canvas");
     exportCanvas.width = canvas.width;
     exportCanvas.height = canvas.height;
     const ex = exportCanvas.getContext("2d");
-    ex.fillStyle = "#ffffff";
+
+    const bg =
+      mode === "white" ? "#f4f6f8" :
+      mode === "canvas" ? "#000000" :
+      "#0b0e14";
+
+    ex.fillStyle = bg;
     ex.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+    if (mode === "black" || mode === "white") {
+      const ok = await drawBasemapTiles(ex, mode);
+      if (!ok) {
+        // Solid fallback if tiles couldn't be composited (CORS / still loading)
+        ex.fillStyle = mode === "white" ? "#ffffff" : "#0b0e14";
+        ex.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+      } else if (mode === "black") {
+        // Match on-screen tile treatment
+        ex.save();
+        ex.globalCompositeOperation = "source-over";
+        ex.fillStyle = "rgba(0,0,0,0.08)";
+        ex.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+        ex.restore();
+      }
+    }
+
+    // Watercolor: screen on dark (matches UI); source-over on light (screen washes out on white)
+    ex.save();
+    if (typeof ex.filter === "string") {
+      ex.filter =
+        mode === "white"
+          ? "blur(2px) saturate(1.35) brightness(0.92)"
+          : "blur(2.2px) saturate(1.5) brightness(1.12)";
+    }
+    ex.globalCompositeOperation = mode === "white" ? "source-over" : "screen";
     ex.drawImage(canvas, 0, 0);
+    if (mode !== "white") {
+      ex.globalAlpha = 0.55;
+      ex.drawImage(canvas, 0, 0);
+    }
+    ex.restore();
+
     ex.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ex.fillStyle = "rgba(17,17,17,.9)";
+    ex.fillStyle = mode === "white" ? "rgba(17,17,17,.88)" : "rgba(255,255,255,.92)";
     ex.font = "600 28px 'Space Grotesk', system-ui, sans-serif";
     ex.fillText("Silence in NYC", 24, 40);
+
+    const suffix = mode === "white" ? "white" : mode === "canvas" ? "black-canvas" : "black";
     const a = document.createElement("a");
-    a.download = "silence-in-nyc.png";
+    a.download = `silence-in-nyc-${suffix}.png`;
     a.href = exportCanvas.toDataURL("image/png");
     a.click();
-    setStatus("PNG downloaded — the map itself is already saved on the server.");
+    setStatus(`PNG downloaded (${suffix.replace("-", " ")}) — the map itself is already saved on the server.`);
+  }
+
+  document.getElementById("btnSave").addEventListener("click", () => {
+    openDownloadModal();
+  });
+  document.getElementById("downloadCancel").addEventListener("click", closeDownloadModal);
+  downloadModal.addEventListener("click", (e) => {
+    if (e.target === downloadModal) closeDownloadModal();
+  });
+  downloadModal.querySelectorAll(".mode-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const mode = btn.getAttribute("data-mode");
+      closeDownloadModal();
+      setStatus("Preparing PNG…");
+      try {
+        await downloadMapPng(mode);
+      } catch (err) {
+        setStatus(`Download failed: ${escapeHtml((err && err.message) || "unknown error")}`);
+      }
+    });
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && downloadModal.classList.contains("open")) {
+      closeDownloadModal();
+    }
   });
 
   function prettyLabel(label) {
@@ -1565,6 +1802,7 @@
             attribution:
               '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
             maxZoom: 20,
+            crossOrigin: true,
           }
         ).addTo(map);
       }
